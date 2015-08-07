@@ -7,6 +7,14 @@
 #define GB_WIDTH 160
 #define GB_HEIGHT 144
 
+void Log(const char* msg) {
+	std::cout << "LOG:" << msg << std::endl; // Bleh
+}
+
+void Error(const char* msg) {
+	std::cout << "ERROR:" << msg << " :: " << SDL_GetError() << std::endl; // Bleh
+}
+
 struct SDLAPP
 {
 	SDL_Window* m_window;
@@ -15,22 +23,22 @@ struct SDLAPP
 
 SDLAPP* CreateApp() {
 	if (SDL_Init(SDL_INIT_VIDEO) != 0){
-		std::cout << "SDL_Init Error: " << SDL_GetError() << std::endl;
+		Error("SDL_Init");
 		return nullptr;
 	}
 
 	SDLAPP* pApp = new SDLAPP();
 	pApp->m_window = SDL_CreateWindow(SCREEN_TITLE, 100, 100, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
 	if (pApp->m_window == nullptr){
-		std::cout << "SDL_CreateWindow Error: " << SDL_GetError() << std::endl;
+		Error("SDL_CreateWindow");
 		delete pApp;
 		return nullptr;
 	}
 
 	pApp->m_renderer = SDL_CreateRenderer(pApp->m_window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
 	if (pApp->m_renderer == nullptr){
+		Error("SDL_CreateRenderer");
 		SDL_DestroyWindow(pApp->m_window);
-		std::cout << "SDL_CreateRenderer Error: " << SDL_GetError() << std::endl;
 		delete pApp;
 		return nullptr;
 	}	
@@ -62,8 +70,50 @@ void RenderScene(uint16_t* pixs, SDL_Texture* pBackBuffTex, SDL_Rect srcRect)
 
 
 	SDL_UpdateTexture(pBackBuffTex, &srcRect, pixs, GB_WIDTH*2);
-
 }
+
+const Uint32 s_FrameRate = 1000 / 30;
+static SDL_Event s_event;
+static Uint32 start_time = SDL_GetTicks();
+
+int GameStep() {
+	start_time = SDL_GetTicks();
+
+	// Events
+	while (SDL_PollEvent(&s_event)) {
+		switch (s_event.type) {
+		case SDL_WINDOWEVENT:
+			// if (event.window.windowID == windowID)
+			switch (s_event.window.event) {
+		
+			case SDL_WINDOWEVENT_CLOSE: {
+				Log("Event: Close Window");
+				break;
+										}
+			}
+			break;
+
+		case SDL_QUIT:
+			Log("Event: QUIT");
+			return 0;
+
+		default:
+			Log("Event: ");// %d", s_event.type);  // Event Spam
+		}
+
+		// TODO :: Handle Event
+	}
+
+	// Update
+
+	// Render
+	
+	
+
+	
+	return 1;
+}
+
 
 int main( int argc, char* argv[] )
 {
@@ -75,16 +125,30 @@ int main( int argc, char* argv[] )
 	uint16_t* pixs = new uint16_t[GB_WIDTH*GB_HEIGHT];
 	SDL_Texture* pBackBuffTex = SDL_CreateTexture(pApp->m_renderer, SDL_PIXELFORMAT_RGB444, SDL_TEXTUREACCESS_STREAMING, GB_WIDTH, GB_HEIGHT);
 
-	RenderScene(pixs, pBackBuffTex, srcRect);
-
+	if(GameStep() == 0) {
+		CleanQuit(pApp);
+		return 0;
+	}
+	
 	do 
 	{
+		
+		RenderScene(pixs, pBackBuffTex, srcRect);
+
 		SDL_RenderClear(pApp->m_renderer);
 		SDL_RenderCopy(pApp->m_renderer, pBackBuffTex, &srcRect, &tarRect);
 		SDL_RenderPresent(pApp->m_renderer);
 		SDL_Delay(1000);
 
-	} while (pApp);
+
+		// Sleep
+		if ((s_FrameRate) > (SDL_GetTicks() - start_time)) {
+			SDL_Delay((s_FrameRate) -
+				(SDL_GetTicks() - start_time));  // Yay stable framerate!
+		}
+
+		
+	} while (GameStep());
 	
 
 	CleanQuit(pApp);
