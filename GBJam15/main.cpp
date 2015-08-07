@@ -1,6 +1,8 @@
 #include "SDL.h"
 #include <iostream>
 
+#include "tetris.h"
+
 #define SCREEN_TITLE "GBJam #15 - Kimau"
 #define SCREEN_WIDTH  480 // 160
 #define SCREEN_HEIGHT 432 // 144
@@ -52,11 +54,10 @@ void CleanQuit(SDLAPP* pApp) {
 	SDL_Quit();
 }
 
-// Colours
-uint16_t GBAColours[4] = {0x141, 0x363, 0x9B1, 0xAC1};
-
-void RenderScene(uint16_t* pixs, SDL_Texture* pBackBuffTex, SDL_Rect srcRect)
+void RenderTestScene(uint16_t* pixs, SDL_Rect srcRect)
 {
+	uint16_t GBAColours[4] = {0x141, 0x363, 0x9B1, 0xAC1};
+
 	for (int x = 0; x < GB_WIDTH; x++)
 	{
 		for (int y = 0; y < GB_HEIGHT; y++)
@@ -67,9 +68,6 @@ void RenderScene(uint16_t* pixs, SDL_Texture* pBackBuffTex, SDL_Rect srcRect)
 		pixs[x] = 0x0FFF;
 		pixs[x+(GB_HEIGHT/2)*GB_WIDTH] = 0x0F00;
 	}
-
-
-	SDL_UpdateTexture(pBackBuffTex, &srcRect, pixs, GB_WIDTH*2);
 }
 
 const Uint32 s_FrameRate = 1000 / 30;
@@ -105,11 +103,7 @@ int GameStep() {
 	}
 
 	// Update
-
-	// Render
-	
-	
-
+	Tick();
 	
 	return 1;
 }
@@ -125,21 +119,23 @@ int main( int argc, char* argv[] )
 	uint16_t* pixs = new uint16_t[GB_WIDTH*GB_HEIGHT];
 	SDL_Texture* pBackBuffTex = SDL_CreateTexture(pApp->m_renderer, SDL_PIXELFORMAT_RGB444, SDL_TEXTUREACCESS_STREAMING, GB_WIDTH, GB_HEIGHT);
 
+	StartGame(GB_WIDTH, GB_HEIGHT);
+
 	if(GameStep() == 0) {
 		CleanQuit(pApp);
 		return 0;
 	}
+
+	//RenderTestScene(pixs, srcRect);
 	
 	do 
 	{
-		
-		RenderScene(pixs, pBackBuffTex, srcRect);
+		Render(pixs, &srcRect);
+		SDL_UpdateTexture(pBackBuffTex, &srcRect, pixs, GB_WIDTH*2);
 
 		SDL_RenderClear(pApp->m_renderer);
 		SDL_RenderCopy(pApp->m_renderer, pBackBuffTex, &srcRect, &tarRect);
 		SDL_RenderPresent(pApp->m_renderer);
-		SDL_Delay(1000);
-
 
 		// Sleep
 		if ((s_FrameRate) > (SDL_GetTicks() - start_time)) {
