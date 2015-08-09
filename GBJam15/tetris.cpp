@@ -1,11 +1,19 @@
 #include "tetris.h"
+#include <vector>
 
 struct  
 {
 	SDL_Rect brickArea;
 	uint16_t width, height;
 	SDL_Surface* sprites;
+	std::vector<SDL_Rect> sprRect;
 } gState;
+
+struct Pt
+{
+	int x,y;
+	Pt(int _x, int _y) : x(_x), y(_y) {}
+};
 
 uint16_t GBAColours[4] = {0x141, 0x363, 0x9B1, 0xAC1};
 
@@ -14,6 +22,93 @@ uint16_t GBAColours[4] = {0x141, 0x363, 0x9B1, 0xAC1};
 #else
 #define SETPIX(__x,__y,__c) { pixs[(__x)+(__y)*gState.width]=(__c); }
 #endif // _DEBUG
+
+
+
+void SetupSprites()
+{
+	SDL_Log(SDL_GetBasePath());
+	gState.sprites = SDL_LoadBMP("sprites.bmp");
+	if(gState.sprites == 0) {
+		SDL_Log(SDL_GetError());
+		return;
+	}
+
+	/**/
+	std::vector<Pt> corners;
+
+	uint16_t* pixs = (uint16_t*)gState.sprites->pixels;
+	uint16_t framePix = pixs[0];
+	for (int y=0; y<gState.height; ++y) {
+		for (int x=0; x<gState.width; ++x)
+		{
+			if( (pixs[x+y*gState.width] == framePix) && 
+				(pixs[x+1+y*gState.width] == framePix) && 
+				(pixs[x+(y+1)*gState.width] == framePix) &&
+				(pixs[(x+1)+(y+1)*gState.width] == 0) ) {
+					corners.push_back(Pt(x,y));
+			}
+		}
+	}
+
+	for (auto p = corners.begin(); p != corners.end(); ++p)
+	{
+		// Build Sheet
+		//gState.sprRect
+
+		// Get Width
+		int numWidth = 0;
+		int numPixWide = 1;
+
+		SDL_Rect currRect;
+		currRect.x = p->x+2;
+		currRect.y = p->y+2;
+
+		for (int x=p->x+2; x < gState.sprites->clip_rect.w; ++x)
+		{
+			if( (pixs[x+y*gState.width] == framePix) && 
+				(pixs[x+(y+1)*gState.width] == 0) ) {
+				++numPixWide;
+			} else if( (pixs[x+y*gState.width] == 0) && 
+					(pixs[x+(y+1)*gState.width] == 0) ) {
+				if(numPixWide > 0) {
+					currRect.w = numPixWide;
+					numPixWide = 0;
+					++numWidth;
+					gState.sprRect.push_back(currRect);
+				}
+			} else {
+				break;
+			}
+		}
+
+		// Get Height
+		for (int y=p->x+2; y < gState.sprites->clip_rect.h; ++y)
+		{
+			if( (pixs[x+y*gState.width] == framePix) && 
+				(pixs[x+(y+1)*gState.width] == 0) ) {
+					++numPixWide;
+			} else if( (pixs[x+y*gState.width] == 0) && 
+				(pixs[x+1+y*gState.width] == 0) ) {
+					if(numPixWide > 0) {
+						currRect.w = numPixWide;
+						numPixWide = 0;
+						++numWidth;
+						gState.sprRect.push_back(currRect);
+					}
+			} else {
+				break;
+			}
+		}
+	}
+	/**/
+
+		Uint8 bytesPerPix = gState.sprites->format->BitsPerPixel;
+		SDL_Log("Bytes %d", bytesPerPix);
+	
+}
+
+
 
 void StartGame(uint16_t width, uint16_t height) {
 	gState.brickArea.x = 4;
@@ -24,15 +119,8 @@ void StartGame(uint16_t width, uint16_t height) {
 	gState.width = width;
 	gState.height = height;
 
-	SDL_Log(SDL_GetBasePath());
-	gState.sprites = SDL_LoadBMP("sprites.bmp");
-
-	if(gState.sprites != NULL) {
-		Uint8 bytesPerPix = gState.sprites->format->BitsPerPixel;
-		SDL_Log("Bytes %d", bytesPerPix);
-	} else {
-		SDL_Log(SDL_GetError());
-	}
+	SetupSprites();
+	return;
 }
 
 void Tick(){
