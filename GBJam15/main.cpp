@@ -130,7 +130,7 @@ int main(int argc, char *argv[]) {
   // RenderTestScene(pixs, srcRect);
 
   do {
-    Render(pixs, &srcRect);
+	  Render(pixs, &Rect{ srcRect.x, srcRect.y, srcRect.w, srcRect.h });
     SDL_UpdateTexture(pBackBuffTex, &srcRect, pixs, GB_WIDTH * 2);
 
     SDL_RenderClear(pApp->m_renderer);
