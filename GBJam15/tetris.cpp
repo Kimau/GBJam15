@@ -37,7 +37,7 @@ uint16_t GBAColours[4] = {0x141, 0x363, 0x9B1, 0xAC1};
 
 void SetupSprites() {
   SDL_Log(SDL_GetBasePath());
-  gState.sprites = SDL_LoadBMP("test.bmp");
+  gState.sprites = SDL_LoadBMP("sprites.bmp");
   if (gState.sprites == 0) {
     SDL_Log(SDL_GetError());
     return;
@@ -47,18 +47,20 @@ void SetupSprites() {
 
   ListOfPt corners;
 
+  SDL_Rect pxSz = gState.sprites->clip_rect;
   uint8_t *pixs = (uint8_t *)gState.sprites->pixels;
   uint8_t framePix = pixs[0];
 
+  // Fuck it Flip the mofo
+  uint8_t *tempLine = new uint8_t[pxSz.w];
   
-  for (int y = 0; y < gState.height; ++y) {
-    for (int x = 0; x < gState.width; ++x) {
-      if ((pixs[x + y * gState.width] == framePix) &&
-          (pixs[x + 1 + y * gState.width] == framePix) &&
-          (pixs[x + (y + 1) * gState.width] == framePix) &&
-          (pixs[(x + 1) + (y + 1) * gState.width] == 0)) {
+  for (int y = 0; y < pxSz.h; ++y) {
+	  for (int x = 0; x < pxSz.w; ++x) {
+		  if ((pixs[x + y * pxSz.w] == framePix) &&
+			  (pixs[x + 1 + y * pxSz.w] == framePix) &&
+			  (pixs[x + (y + 1) * pxSz.w] == framePix) &&
+			  (pixs[(x + 1) + (y + 1) * pxSz.w] == 0)) {
         corners.push_back({x, y});
-		SDL_Log("Found corner at %d %d", x, y);
       }
     }
   }
@@ -76,17 +78,16 @@ void SetupSprites() {
     currRect.y = p.y + 2;
     currRect.w = 0;
 
-    int yoffset = p.y * gState.width;
-    for (int x = p.x + 2; x < gState.sprites->clip_rect.w; ++x) {
+	int yoffset = p.y * pxSz.w;
+	for (int x = p.x + 2; x < pxSz.w; ++x) {
       if ((pixs[x + yoffset] == framePix) &&
-          (pixs[x + yoffset + gState.width] == 0)) {
+		  (pixs[x + yoffset + pxSz.w] == 0)) {
         if (currRect.w == 0) currRect.x = x;
         ++currRect.w;
       } else if ((pixs[x + yoffset] == 0) &&
-                 (pixs[x + yoffset + gState.width] == 0)) {
+		  (pixs[x + yoffset + pxSz.w] == 0)) {
         if (currRect.w > 0) {
           currSpr.push_back(currRect);
-		  SDL_Log("Pushed Width %d [%d] %d", currRect.x, currRect.w, currRect.y);
           currRect.w = 0;
         }
       } else {
@@ -97,20 +98,25 @@ void SetupSprites() {
     // Get Height
     currRect.h = 0;
 
+	int numSpr = 0;
+
     int xoffset = p.x;
-    for (int y = p.y + 2; y < gState.sprites->clip_rect.h; ++y) {
-      if ((pixs[xoffset + y * gState.width] == framePix) &&
-          (pixs[xoffset + 1 + y * gState.width] == 0)) {
+	for (int y = p.y + 2; y < pxSz.h; ++y) {
+		if ((pixs[xoffset + y * pxSz.w] == framePix) &&
+			(pixs[xoffset + 1 + y * pxSz.w] == 0)) {
         if (currRect.h == 0) currRect.y = y;
         ++currRect.h;
-      } else if ((pixs[xoffset + y * gState.width] == 0) &&
-                 (pixs[xoffset + 1 + y * gState.width] == 0)) {
+		}
+		else if ((pixs[xoffset + y * pxSz.w] == 0) &&
+			(pixs[xoffset + 1 + y * pxSz.w] == 0)) {
         if (currRect.h > 0) {
           for (size_t subI = 0; subI < currSpr.size(); subI++) {
             auto r = currSpr.at(subI);
             r.y = currRect.y;
             r.h = currRect.h;
             gState.sprRect.push_back(r);
+
+			++numSpr;
           }
 
           currRect.h = 0;
@@ -121,7 +127,7 @@ void SetupSprites() {
     }
 
     // All Done
-    SDL_Log("[%d:%d] spr count now %d", p.x, p.y, gState.sprRect.size());
+	SDL_Log("[%d:%d] = %d", p.x, p.y, numSpr);
   }
   /**/
 }
