@@ -73,6 +73,7 @@ void RenderTestScene(uint16_t *pixs, SDL_Rect srcRect) {
 const Uint32 s_FrameRate = 1000 / 30;
 static SDL_Event s_event;
 static Uint32 start_time = SDL_GetTicks();
+static ButState buttons;
 
 int GameStep() {
   start_time = SDL_GetTicks();
@@ -90,6 +91,40 @@ int GameStep() {
         }
         break;
 
+	  case SDL_KEYDOWN:
+		  switch (s_event.key.keysym.scancode) {
+		  case SDL_SCANCODE_UP:
+			  buttons.up = 3;
+			  break;
+		  case SDL_SCANCODE_DOWN:
+			  buttons.down = 3;
+			  break;
+		  case SDL_SCANCODE_LEFT:
+			  buttons.left = 3;
+			  break;
+		  case SDL_SCANCODE_RIGHT:
+			  buttons.right = 3;
+			  break;
+		  }
+		  break;
+
+	  case SDL_KEYUP:
+		  switch (s_event.key.keysym.scancode) {
+		  case SDL_SCANCODE_UP:
+			  buttons.up = 0;
+			  break;
+		  case SDL_SCANCODE_DOWN:
+			  buttons.down = 0;
+			  break;
+		  case SDL_SCANCODE_LEFT:
+			  buttons.left = 0;
+			  break;
+		  case SDL_SCANCODE_RIGHT:
+			  buttons.right = 0;
+			  break;
+		  }
+		  break;
+
       case SDL_QUIT:
         Log("Event: QUIT");
         return 0;
@@ -102,7 +137,7 @@ int GameStep() {
   }
 
   // Update
-  Tick();
+  Tick(&buttons);
 
   return 1;
 }
@@ -120,6 +155,7 @@ int main(int argc, char *argv[]) {
       SDL_CreateTexture(pApp->m_renderer, SDL_PIXELFORMAT_RGB444,
                         SDL_TEXTUREACCESS_STREAMING, GB_WIDTH, GB_HEIGHT);
 
+  buttons = { 0, 0, 0, 0 };
   StartGame(GB_WIDTH, GB_HEIGHT);
 
   if (GameStep() == 0) {

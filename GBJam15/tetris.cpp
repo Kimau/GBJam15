@@ -4,15 +4,57 @@
 typedef std::vector<Pt> ListOfPt;
 typedef std::vector<Rect> ListOfRect;
 
+////// CONSTS
+uint16_t GBAColours[4] = {0x141, 0x363, 0x9B1, 0xAC1};
+
+///////// SPRITE SHEET DATA
+int SPR_NUM[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+int SPR_MOUSE_IDLE[] = {10};
+int SPR_MOUSE_RUN[] = {11, 12};
+int SPR_CAT_IDLE[] = {28, 29, 30, 31, 32, 33, 34, 35};
+int SPR_CAT_WALK[] = {36, 37, 38, 39};
+int SPR_CAT_UP[] = {40};
+int SPR_CAT_HOLD[] = {41};
+int SPR_CAT_DOWN[] = {42};
+int SPR_CAT_POUNCE[] = {44};
+int SPR_DOG[] = {47, 48};
+int SPR_FIGHT[] = {49, 50, 51};
+int SPR_FOOD[] = {13, 14};
+int SPR_SQUEEK[] = {27};
+int SPR_WINDOW_CAT[] = {15, 17, 19, 21, 23, 25, 25, 25, 23, 21, 19, 17, 15};
+int SPR_WINDOW_EMPTY[] = {16, 18, 20, 22, 24, 26, 26, 26, 24, 22, 22, 20, 18, 16};
+
+//// STATE
+
+struct CatData {
+	enum 
+	{
+		Idle,
+		Left,
+		Right,
+		Up,
+		Down,
+		PounceLeft,
+		PounceRight,
+		Hold
+	} state;
+	Pt pos;
+};
+
+struct SpriteData {
+	uint8_t* pixs;
+	int sprPitch;
+	ListOfRect sprRect;
+};
+
 struct GameStateData {
-  Rect brickArea;
-  int width, height;
-  uint8_t* sprites;
-  int sprPitch;
-  ListOfRect sprRect;
+	Rect brickArea;
+	int width, height;
+	CatData cat;
+	SpriteData sprites;
 } gState;
 
-uint16_t GBAColours[4] = {0x141, 0x363, 0x9B1, 0xAC1};
+/////// MACRO
 
 #ifdef _DEBUG
 #define SETPIX(__x, __y, __c)                                                 \
@@ -26,10 +68,10 @@ uint16_t GBAColours[4] = {0x141, 0x363, 0x9B1, 0xAC1};
   { pixs[(__x) + (__y)*gState.width] = (__c); }
 #endif  // _DEBUG
 
-void SetupSprites() {
+void SetupSprites(SpriteData& sprData, const char* filename) {
   SDL_Log(SDL_GetBasePath());
 
-  SDL_Surface* sprSurf = SDL_LoadBMP("sprites.bmp");
+  SDL_Surface* sprSurf = SDL_LoadBMP(filename);
   if (sprSurf == 0) {
     SDL_Log(SDL_GetError());
     return;
@@ -106,7 +148,7 @@ void SetupSprites() {
             auto r = currSpr.at(subI);
             r.y = currRect.y;
             r.h = currRect.h;
-            gState.sprRect.push_back(r);
+			sprData.sprRect.push_back(r);
 
 			++numSpr;
           }
@@ -123,9 +165,9 @@ void SetupSprites() {
   }
 
   /**/
-  gState.sprPitch = sprSurf->w;
-  gState.sprites = new uint8_t[sprSurf->w*sprSurf->h];
-  memcpy(gState.sprites, sprSurf->pixels, sprSurf->w*sprSurf->h);
+  sprData.sprPitch = sprSurf->w;
+  sprData.pixs = new uint8_t[sprSurf->w*sprSurf->h];
+  memcpy(sprData.pixs, sprSurf->pixels, sprSurf->w*sprSurf->h);
   SDL_FreeSurface(sprSurf);
 
   SDL_Log("Setup Done");
@@ -140,11 +182,51 @@ void StartGame(uint16_t width, uint16_t height) {
   gState.width = width;
   gState.height = height;
 
-  SetupSprites();
+  gState.cat.pos = { 30, 50 };
+  gState.cat.state = CatData::Idle;
+
+  SetupSprites(gState.sprites, "sprites.bmp");
   return;
 }
 
-void Tick() {}
+static int ticker = 0;
+void Tick(ButState *buttons) {
+  if (buttons->left > 0)
+    gState.cat.state = CatData::Left;
+  else if (buttons->right > 0)
+    gState.cat.state = CatData::Right;
+  else
+    gState.cat.state = CatData::Idle;
+
+  switch (gState.cat.state) {
+    case CatData::Idle:
+      break;
+    case CatData::Left:
+      if ((ticker % 3) > 0) gState.cat.pos.x -= 1;
+      break;
+    case CatData::Right:
+      if ((ticker % 3) > 0) gState.cat.pos.x += 1;
+      break;
+    case CatData::Up:
+      break;
+    case CatData::Down:
+      break;
+    case CatData::PounceLeft:
+      break;
+    case CatData::PounceRight:
+      break;
+    case CatData::Hold:
+      break;
+  }
+
+  // Clear Press
+  buttons->up &= 1;
+  buttons->down &= 1;
+  buttons->left &= 1;
+  buttons->right &= 1;
+
+  ++ticker;
+}
 
 void FillRect(uint16_t *pixs, Rect *tarRect, uint16_t col) {
 	for (int x = tarRect->x; x < (tarRect->w + tarRect->x); ++x)
@@ -152,39 +234,74 @@ void FillRect(uint16_t *pixs, Rect *tarRect, uint16_t col) {
       SETPIX(x, y, col);
 }
 
-Pt Sprite(uint16_t *pixs, Pt *topLeft, size_t sprID) {
-	const Rect& srcRect = gState.sprRect.at(sprID);
+Pt SpriteHorFlip(uint16_t *pixs, const Pt& topLeft, const SpriteData& sheet, size_t sprID) {
+	const Rect& srcRect = sheet.sprRect.at(sprID);
 
 	for (int x = 0; x < srcRect.w; ++x) {
 		for (int y = 0; y < srcRect.h; ++y) {
-			switch (gState.sprites[(srcRect.x + x) + (srcRect.y + y) * gState.sprPitch]) {
+			switch (sheet.pixs[srcRect.w + srcRect.x -x-1 + (srcRect.y + y) * sheet.sprPitch]) {
 			case 0:
 				break;
 			case 1:
-				SETPIX(topLeft->x + x, topLeft->y + y, GBAColours[0]);
+				SETPIX(topLeft.x + x, topLeft.y + y, GBAColours[0]);
 				break;
 			case 2:
-				SETPIX(topLeft->x + x, topLeft->y + y, GBAColours[1]);
+				SETPIX(topLeft.x + x, topLeft.y + y, GBAColours[1]);
 				break;
 			case 3:
-				SETPIX(topLeft->x + x, topLeft->y + y, GBAColours[2]);
+				SETPIX(topLeft.x + x, topLeft.y + y, GBAColours[2]);
 				break;
 			case 4:
-				SETPIX(topLeft->x + x, topLeft->y + y, GBAColours[3]);
+				SETPIX(topLeft.x + x, topLeft.y + y, GBAColours[3]);
 				break;
 			case 14:
-				SETPIX(topLeft->x + x, topLeft->y + y, 0xF0F);
+				SETPIX(topLeft.x + x, topLeft.y + y, 0xF0F);
 				break;
 			default:
-				SETPIX(topLeft->x + x, topLeft->y + y, 0);
-				SDL_Log("X: %d", gState.sprites[(srcRect.x + x) + (srcRect.y + y) * gState.sprPitch]);
+				SETPIX(topLeft.x + x, topLeft.y + y, 0);
+				SDL_Log("X: %d", sheet.pixs[(srcRect.x + x) + (srcRect.y + y) * sheet.sprPitch]);
+				break;
+			}
+
+		}
+	}
+
+	return Pt{ topLeft.x + srcRect.w, topLeft.y + srcRect.h };
+}
+
+Pt Sprite(uint16_t *pixs, const Pt& topLeft, const SpriteData& sheet, size_t sprID) {
+	const Rect& srcRect = sheet.sprRect.at(sprID);
+
+	for (int x = 0; x < srcRect.w; ++x) {
+		for (int y = 0; y < srcRect.h; ++y) {
+			switch (sheet.pixs[(srcRect.x + x) + (srcRect.y + y) * sheet.sprPitch]) {
+			case 0:
+				break;
+			case 1:
+				SETPIX(topLeft.x + x, topLeft.y + y, GBAColours[0]);
+				break;
+			case 2:
+				SETPIX(topLeft.x + x, topLeft.y + y, GBAColours[1]);
+				break;
+			case 3:
+				SETPIX(topLeft.x + x, topLeft.y + y, GBAColours[2]);
+				break;
+			case 4:
+				SETPIX(topLeft.x + x, topLeft.y + y, GBAColours[3]);
+				break;
+			case 14:
+				SETPIX(topLeft.x + x, topLeft.y + y, 0xF0F);
+				break;
+			default:
+				SETPIX(topLeft.x + x, topLeft.y + y, 0);
+				SDL_Log("X: %d", sheet.pixs[(srcRect.x + x) + (srcRect.y + y) * sheet.sprPitch]);
 				break;
 			}
 			
 		}
 	}
 
-	return Pt{ topLeft->x + srcRect.w, topLeft->y + srcRect.h };
+	return Pt{ topLeft.x + srcRect.w, topLeft.y + srcRect.h };
 }
 
 void BorderRect(uint16_t *pixs, Rect *tarRect, uint16_t col, int inset,
@@ -246,25 +363,67 @@ SDL_Rect ShrinkGrow(Rect *srcRect, int amount) {
   return newRect;
 }
 
+static int animCount = 0;
+
+void RenderCat(uint16_t *pixs, Rect *srcRect, CatData &cat) {
+	int l = 1;
+  switch (cat.state) {
+    case CatData::Idle:
+		l = sizeof(SPR_CAT_IDLE) / sizeof(int);
+		Sprite(pixs, cat.pos, gState.sprites, SPR_CAT_IDLE[animCount / 10 % l]);
+      break;
+    case CatData::Left:
+		l = sizeof(SPR_CAT_WALK) / sizeof(int);
+		SpriteHorFlip(pixs, cat.pos, gState.sprites, SPR_CAT_WALK[animCount / 7 % l]);
+      break;
+    case CatData::Right:
+		l = sizeof(SPR_CAT_WALK) / sizeof(int);
+		Sprite(pixs, cat.pos, gState.sprites, SPR_CAT_WALK[animCount / 7 % l]);
+      break;
+    case CatData::Up:
+		l = sizeof(SPR_CAT_UP) / sizeof(int);
+		Sprite(pixs, cat.pos, gState.sprites, SPR_CAT_UP[animCount / 10 % l]);
+      break;
+    case CatData::Down:
+		l = sizeof(SPR_CAT_DOWN) / sizeof(int);
+		Sprite(pixs, cat.pos, gState.sprites, SPR_CAT_DOWN[animCount / 10 % l]);
+      break;
+    case CatData::PounceLeft:
+		l = sizeof(SPR_CAT_POUNCE) / sizeof(int);
+		Sprite(pixs, cat.pos, gState.sprites, SPR_CAT_POUNCE[animCount / 10 % l]);
+      break;
+    case CatData::PounceRight:
+		l = sizeof(SPR_CAT_POUNCE) / sizeof(int);
+		SpriteHorFlip(pixs, cat.pos, gState.sprites, SPR_CAT_POUNCE[animCount / 10 % l]);
+      break;
+    case CatData::Hold:
+		l = sizeof(SPR_CAT_HOLD) / sizeof(int);
+		Sprite(pixs, cat.pos, gState.sprites, SPR_CAT_HOLD[animCount / 10 % l]);
+      break;
+  }
+  
+}
+
 void Render(uint16_t *pixs, Rect *srcRect) {
   // Clear Board
   FillRect(pixs, srcRect, GBAColours[1]);
 
-  if (gState.sprites == 0)
-    pixs[0] = 0;
-  else
-    pixs[0] = 0xffff;
-  // FillRect(pixs, &(gState.brickArea), GBAColours[0]);
 
   BezelBoxFilled(pixs, &(gState.brickArea), GBAColours[2], GBAColours[1],
                  GBAColours[0]);
 
   Pt cur = Pt{ 6, 6 };
   for (int i = 0; i < 10; ++i) {
-	  cur = Sprite(pixs, &cur, i);
+	  cur = Sprite(pixs, cur, gState.sprites, i);
 	  cur.y = 6;
 	  cur.x += 1;
   }
+
+  int l = sizeof(SPR_WINDOW_CAT) / sizeof(int);
+  Sprite(pixs, Pt{ 6, 20 }, gState.sprites, SPR_WINDOW_CAT[animCount / 5 % l]);
+  ++animCount;
+
+  RenderCat(pixs, srcRect, gState.cat);
     
   /*
   SETPIX(gState.brickArea.x, gState.brickArea.y, 0x0F00);
