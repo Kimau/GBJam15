@@ -2,28 +2,24 @@
 #include <vector>
 
 class Rect {
-public:
-	int x, y, w, h;
+ public:
+  int x, y, w, h;
 };
 
 class Pt {
-public:
+ public:
   int x, y;
-
-  Pt(Pt&& p) = default;
 };
 
 typedef std::vector<Pt> ListOfPt;
 typedef std::vector<Rect> ListOfRect;
 
 struct GameStateData {
-	SDL_Rect brickArea;
-	uint16_t width, height;
-	SDL_Surface *sprites;
-	ListOfRect sprRect;
+  SDL_Rect brickArea;
+  uint16_t width, height;
+  SDL_Surface *sprites;
+  ListOfRect sprRect;
 } gState;
-
-
 
 uint16_t GBAColours[4] = {0x141, 0x363, 0x9B1, 0xAC1};
 
@@ -41,52 +37,57 @@ uint16_t GBAColours[4] = {0x141, 0x363, 0x9B1, 0xAC1};
 
 void SetupSprites() {
   SDL_Log(SDL_GetBasePath());
-  gState.sprites = SDL_LoadBMP("sprites.bmp");
+  gState.sprites = SDL_LoadBMP("test.bmp");
   if (gState.sprites == 0) {
     SDL_Log(SDL_GetError());
     return;
   }
 
+  SDL_Log("Bytes %d, %d", gState.sprites->format->BitsPerPixel, gState.sprites->format->format);
+
   ListOfPt corners;
 
-  uint16_t *pixs = (uint16_t *)gState.sprites->pixels;
-  uint16_t framePix = pixs[0];
+  uint8_t *pixs = (uint8_t *)gState.sprites->pixels;
+  uint8_t framePix = pixs[0];
+
+  
   for (int y = 0; y < gState.height; ++y) {
     for (int x = 0; x < gState.width; ++x) {
       if ((pixs[x + y * gState.width] == framePix) &&
           (pixs[x + 1 + y * gState.width] == framePix) &&
           (pixs[x + (y + 1) * gState.width] == framePix) &&
           (pixs[(x + 1) + (y + 1) * gState.width] == 0)) {
-		  corners.push_back({ x, y });
+        corners.push_back({x, y});
+		SDL_Log("Found corner at %d %d", x, y);
       }
     }
   }
-  
-  for (const auto &p : corners) {
 
-  }/*
+  for (size_t i = 0; i < corners.size(); i++) {
+    const auto &p = corners.at(i);
+
     // Build Sheet
-	ListOfRect currSpr;
+    ListOfRect currSpr;
 
     // Get Width
-    
-    Rect currRect;
-    currRect.x = p->x + 2;
-    currRect.y = p->y + 2;
-	currRect.w = 0;
 
-    int yoffset = p->y * gState.width;
-    for (int x = p->x + 2; x < gState.sprites->clip_rect.w; ++x) {
+    Rect currRect;
+    currRect.x = p.x + 2;
+    currRect.y = p.y + 2;
+    currRect.w = 0;
+
+    int yoffset = p.y * gState.width;
+    for (int x = p.x + 2; x < gState.sprites->clip_rect.w; ++x) {
       if ((pixs[x + yoffset] == framePix) &&
           (pixs[x + yoffset + gState.width] == 0)) {
-		  if (currRect.w == 0)
-			  currRect.x = x;
-		  ++currRect.w;
+        if (currRect.w == 0) currRect.x = x;
+        ++currRect.w;
       } else if ((pixs[x + yoffset] == 0) &&
                  (pixs[x + yoffset + gState.width] == 0)) {
-		  if (currRect.w > 0) {
-		  currSpr.push_back(currRect);
-		  currRect.w = 0;
+        if (currRect.w > 0) {
+          currSpr.push_back(currRect);
+		  SDL_Log("Pushed Width %d [%d] %d", currRect.x, currRect.w, currRect.y);
+          currRect.w = 0;
         }
       } else {
         break;
@@ -94,39 +95,35 @@ void SetupSprites() {
     }
 
     // Get Height
-	currRect.h = 0;
+    currRect.h = 0;
 
-    int xoffset = p->x;
-    for (int y = p->y + 2; y < gState.sprites->clip_rect.h; ++y) {
+    int xoffset = p.x;
+    for (int y = p.y + 2; y < gState.sprites->clip_rect.h; ++y) {
       if ((pixs[xoffset + y * gState.width] == framePix) &&
           (pixs[xoffset + 1 + y * gState.width] == 0)) {
-		  if (currRect.h == 0)
-			  currRect.y = y;
-		  ++currRect.h;
+        if (currRect.h == 0) currRect.y = y;
+        ++currRect.h;
       } else if ((pixs[xoffset + y * gState.width] == 0) &&
                  (pixs[xoffset + 1 + y * gState.width] == 0)) {
-		  if (currRect.h > 0) {
-			for (auto r = currSpr.begin(); r != currSpr.end(); ++r)
-			{
-				r->y = currRect.y;
-				r->h = currRect.h;
+        if (currRect.h > 0) {
+          for (size_t subI = 0; subI < currSpr.size(); subI++) {
+            auto r = currSpr.at(subI);
+            r.y = currRect.y;
+            r.h = currRect.h;
+            gState.sprRect.push_back(r);
+          }
 
-				gState.sprRect.push_back(*r);
-			}
-			currRect.h = 0;          
+          currRect.h = 0;
         }
       } else {
         break;
       }
     }
 
-	// All Done
-	SDL_Log("[%d:%d] spr count now %d", p->x, p->y, gState.sprRect.size());
+    // All Done
+    SDL_Log("[%d:%d] spr count now %d", p.x, p.y, gState.sprRect.size());
   }
   /**/
-
-  Uint8 bytesPerPix = gState.sprites->format->BitsPerPixel;
-  SDL_Log("Bytes %d", bytesPerPix);
 }
 
 void StartGame(uint16_t width, uint16_t height) {
@@ -221,7 +218,7 @@ void Render(uint16_t *pixs, SDL_Rect *srcRect) {
 
   BezelBoxFilled(pixs, &(gState.brickArea), GBAColours[2], GBAColours[1],
                  GBAColours[0]);
-
+    
   /*
   SETPIX(gState.brickArea.x, gState.brickArea.y, 0x0F00);
   SETPIX(gState.brickArea.x-1, gState.brickArea.y-1, 0x000F);
