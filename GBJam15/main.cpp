@@ -29,6 +29,7 @@ SDLAPP *CreateApp() {
     return nullptr;
   }
 
+
   SDLAPP *pApp = new SDLAPP();
   pApp->m_window = SDL_CreateWindow(SCREEN_TITLE, 100, 100, SCREEN_WIDTH,
                                     SCREEN_HEIGHT, SDL_WINDOW_SHOWN);

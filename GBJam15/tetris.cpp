@@ -1,8 +1,6 @@
 #include "tetris.h"
 #include <vector>
 
-using namespace std;
-
 class Rect {
 public:
 	int x, y, w, h;
@@ -11,14 +9,20 @@ public:
 class Pt {
 public:
   int x, y;
+
+  Pt(Pt&& p) = default;
 };
 
-struct {
+typedef std::vector<Pt> ListOfPt;
+typedef std::vector<Rect> ListOfRect;
+
+struct GameStateData {
 	SDL_Rect brickArea;
 	uint16_t width, height;
 	SDL_Surface *sprites;
-	vector<Rect> sprRect;
+	ListOfRect sprRect;
 } gState;
+
 
 
 uint16_t GBAColours[4] = {0x141, 0x363, 0x9B1, 0xAC1};
@@ -43,8 +47,7 @@ void SetupSprites() {
     return;
   }
 
-  /**/
-  vector<Pt> corners;
+  ListOfPt corners;
 
   uint16_t *pixs = (uint16_t *)gState.sprites->pixels;
   uint16_t framePix = pixs[0];
@@ -58,10 +61,12 @@ void SetupSprites() {
       }
     }
   }
+  
+  for (const auto &p : corners) {
 
-  for (auto p = corners.begin(); p != corners.end(); ++p) {
+  }/*
     // Build Sheet
-	vector<Rect> currSpr;
+	ListOfRect currSpr;
 
     // Get Width
     
