@@ -1,5 +1,6 @@
 #include "tetris.h"
 #include <vector>
+#include <algorithm>
 
 typedef std::vector<Pt> ListOfPt;
 typedef std::vector<Rect> ListOfRect;
@@ -44,26 +45,57 @@ struct BackgroundData {
   Rect size;
 };
 
+struct PixData {
+	uint16_t *pixs;
+	Rect size;
+};
+
+
 struct GameStateData {
-  Rect brickArea;
-  int width, height;
+  int screen_width, screen_height;
   CatData cat;
   SpriteData sprites;
   BackgroundData floor;
+  Pt scrollPoint;
 } gState;
+
+/////// FUNCTIONS - RECT / PT
+
+Pt operator+(const Pt& a, const Pt& b) { return Pt{ a.x + b.x, a.y + b.y }; }
+Pt operator-(const Pt& a, const Pt& b) { return Pt{ a.x - b.x, a.y - b.y }; }
+Rect operator+(const Rect& r, const Pt& p) { return Rect{ r.x + p.x, r.y + p.y, r.w, r.h }; }
+Rect operator-(const Rect& r, const Pt& p) { return Rect{ r.x - p.x, r.y - p.y, r.w, r.h }; }
+bool in(const Rect& r, const Pt& p) { return (p.x >= r.x) && (p.y >= r.y) && (p.x < (r.x+r.w)) && (p.y < (r.y+r.h)); }
+Rect ShrinkGrow(const Rect& r, int s) {	return Rect{ r.x - s, r.y - s, r.w + s, r.h + s }; }
+
+Rect operator&(const Rect& a, const Rect& b) { 
+	return Rect{ 
+	std::max(a.x, b.x), 
+	std::max(a.y, b.y), 
+	std::min(a.x + a.w, b.x + b.w) - std::max(a.x, b.x), 
+	std::min(a.y + a.h, b.y + b.h) - std::max(a.y, b.y) }; 
+}
+
+Rect operator|(const Rect& a, const Rect& b) {
+	return Rect{
+		std::min(a.x, b.x),
+		std::min(a.y, b.y),
+		std::max(a.x + a.w, b.x + b.w) - std::min(a.x, b.x),
+		std::max(a.y + a.h, b.y + b.h) - std::min(a.y, b.y) };
+}
 
 /////// MACRO
 
 #ifdef _DEBUG
-#define SETPIX(__x, __y, __c)                                            \
+#define SETPIX(__scrn, __x, __y, __c)                                            \
   {                                                                      \
-    SDL_assert(((__x) >= 0) && ((__y) >= 0) && ((__x) < gState.width) && \
-               ((__y) < gState.height));                                 \
-    pixs[(__x) + (__y)*gState.width] = (__c);                            \
+    SDL_assert(((__x) >= 0) && ((__y) >= 0) && ((__x) < (__scrn).size.w ) && \
+               ((__y) < (__scrn).size.h));                                 \
+    (__scrn).pixs[(__x) + (__y)*(__scrn).size.w] = (__c);                            \
   }
 #else
 #define SETPIX(__x, __y, __c) \
-  { pixs[(__x) + (__y)*gState.width] = (__c); }
+  { pixs[(__x) + (__y)*(__scrn).size.w] = (__c); }
 #endif  // _DEBUG
 
 void SetupBackground(BackgroundData &bgData, const char *filename) {
@@ -186,19 +218,16 @@ void SetupSprites(SpriteData &sprData, const char *filename) {
 }
 
 void StartGame(uint16_t width, uint16_t height) {
-  gState.brickArea.x = 4;
-  gState.brickArea.y = 4;
-  gState.brickArea.w = width / 2;
-  gState.brickArea.h = height - 8;
 
-  gState.width = width;
-  gState.height = height;
+  gState.screen_width = width;
+  gState.screen_height = height;
+
+  gState.scrollPoint = { 0, 0 };
 
   SetupSprites(gState.sprites, "sprites.bmp");
   SetupBackground(gState.floor, "floor.bmp");
 
-  gState.cat.pos = {30, gState.height - FLOOR_HEIGHT -
-                            gState.sprites.sprRect.at(SPR_CAT_IDLE[0]).h};
+  gState.cat.pos = {30, FLOOR_HEIGHT + 10};
   gState.cat.state = CatData::Idle;
   return;
 }
@@ -216,10 +245,10 @@ void Tick(ButState *buttons) {
     case CatData::Idle:
       break;
     case CatData::Left:
-      if ((ticker % 3) > 0) gState.cat.pos.x -= 1;
+		gState.cat.pos.x -= ((ticker % 3) == 0) ? 1:2;
       break;
     case CatData::Right:
-      if ((ticker % 3) > 0) gState.cat.pos.x += 1;
+		gState.cat.pos.x += ((ticker % 3) == 0) ? 1:2;
       break;
     case CatData::Up:
       break;
@@ -232,6 +261,9 @@ void Tick(ButState *buttons) {
     case CatData::Hold:
       break;
   }
+
+  // Scroll Screen
+  gState.scrollPoint.x += (ticker % 10 == 0) ? 1 : 0;
 
   // Clear Press
   buttons->up &= 1;
@@ -242,254 +274,272 @@ void Tick(ButState *buttons) {
   ++ticker;
 }
 
-void FillRect(uint16_t *pixs, Rect *tarRect, uint16_t col) {
-  for (int x = tarRect->x; x < (tarRect->w + tarRect->x); ++x)
-    for (int y = tarRect->y; y < (tarRect->h + tarRect->y); ++y)
-      SETPIX(x, y, col);
-}
-
-Pt SpriteHorFlip(uint16_t *pixs, const Pt &topLeft, const SpriteData &sheet,
-                 size_t sprID) {
-  const Rect &srcRect = sheet.sprRect.at(sprID);
-
-  for (int x = 0; x < srcRect.w; ++x) {
-    for (int y = 0; y < srcRect.h; ++y) {
-      switch (sheet.pixs[srcRect.w + srcRect.x - x - 1 +
-                         (srcRect.y + y) * sheet.sprPitch]) {
-        case 0:
-          break;
-        case 1:
-          SETPIX(topLeft.x + x, topLeft.y + y, GBAColours[0]);
-          break;
-        case 2:
-          SETPIX(topLeft.x + x, topLeft.y + y, GBAColours[1]);
-          break;
-        case 3:
-          SETPIX(topLeft.x + x, topLeft.y + y, GBAColours[2]);
-          break;
-        case 4:
-          SETPIX(topLeft.x + x, topLeft.y + y, GBAColours[3]);
-          break;
-        case 14:
-          SETPIX(topLeft.x + x, topLeft.y + y, 0xF0F);
-          break;
-        default:
-          SETPIX(topLeft.x + x, topLeft.y + y, 0xF00);
-          break;
-      }
-    }
-  }
-
-  return Pt{topLeft.x + srcRect.w, topLeft.y + srcRect.h};
-}
-
-Pt Sprite(uint16_t *pixs, const Pt &topLeft, const SpriteData &sheet,
-          size_t sprID) {
-  const Rect &srcRect = sheet.sprRect.at(sprID);
-
-  for (int x = 0; x < srcRect.w; ++x) {
-    for (int y = 0; y < srcRect.h; ++y) {
-      switch (sheet.pixs[(srcRect.x + x) + (srcRect.y + y) * sheet.sprPitch]) {
-        case 0:
-          break;
-        case 1:
-          SETPIX(topLeft.x + x, topLeft.y + y, GBAColours[0]);
-          break;
-        case 2:
-          SETPIX(topLeft.x + x, topLeft.y + y, GBAColours[1]);
-          break;
-        case 3:
-          SETPIX(topLeft.x + x, topLeft.y + y, GBAColours[2]);
-          break;
-        case 4:
-          SETPIX(topLeft.x + x, topLeft.y + y, GBAColours[3]);
-          break;
-        case 14:
-          SETPIX(topLeft.x + x, topLeft.y + y, 0xF0F);
-          break;
-        default:
-          SETPIX(topLeft.x + x, topLeft.y + y, 0xF00);
-          break;
-      }
-    }
-  }
-
-  return Pt{topLeft.x + srcRect.w, topLeft.y + srcRect.h};
-}
-
-void Background(uint16_t *pixs, Pt topLeft, const BackgroundData &bg) {
-  Rect srcRect = bg.size;
-
-  if (topLeft.x < 0) {
-    srcRect.x += topLeft.x;
-    srcRect.x = topLeft.x;
-    topLeft.x = -topLeft.x;
-  }
-
-  if (topLeft.y < 0) {
-    srcRect.y += topLeft.y;
-    srcRect.y = topLeft.y;
-    topLeft.y = -topLeft.y;
-  }
-
-  if ((topLeft.x + srcRect.w - srcRect.x) >= gState.width) {
-    srcRect.w -= (topLeft.x + srcRect.w - srcRect.x) - gState.width;
-  }
-
-  if ((topLeft.y + srcRect.h - srcRect.y) >= gState.height) {
-    srcRect.h -= (topLeft.y + srcRect.h - srcRect.y) - gState.height;
-  }
-
-  for (int x = srcRect.x; x < srcRect.w; ++x) {
-    for (int y = srcRect.y; y < srcRect.h; ++y) {
-      switch (bg.pixs[(srcRect.x + x) + (srcRect.y + y) * bg.size.w]) {
-        case 0:
-          break;
-        case 1:
-          SETPIX(topLeft.x + x, topLeft.y + y, GBAColours[0]);
-          break;
-        case 2:
-          SETPIX(topLeft.x + x, topLeft.y + y, GBAColours[1]);
-          break;
-        case 3:
-          SETPIX(topLeft.x + x, topLeft.y + y, GBAColours[2]);
-          break;
-        case 4:
-          SETPIX(topLeft.x + x, topLeft.y + y, GBAColours[3]);
-          break;
-        case 14:
-          SETPIX(topLeft.x + x, topLeft.y + y, 0xF0F);
-          break;
-        default:
-          SETPIX(topLeft.x + x, topLeft.y + y, 0xF00);
-          break;
-      }
-    }
-  }
-}
-
-void BorderRect(uint16_t *pixs, Rect *tarRect, uint16_t col, int inset,
-                int outset) {
-  int tlx, tly, brx, bry;
-  tlx = tarRect->x;
-  tly = tarRect->y;
-  brx = tarRect->x + tarRect->w;
-  bry = tarRect->y + tarRect->h;
-
-  for (int x = (tlx - outset); x < (brx + outset); ++x) {
-    for (int y = (tly - outset); y < (tly + inset); ++y) SETPIX(x, y, col);
-
-    for (int y = (bry - inset); y < (bry + outset); ++y) SETPIX(x, y, col);
-  }
-
-  for (int y = (tly - outset); y < (bry + outset); ++y) {
-    for (int x = (tlx - outset); x < (tlx + inset); ++x) SETPIX(x, y, col);
-
-    for (int x = (brx - inset); x < (brx + outset); ++x) SETPIX(x, y, col);
-  }
-}
-
-void BezelBoxFilled(uint16_t *pixs, Rect *tarRect, uint16_t loCol,
-                    uint16_t midCol, uint16_t hiCol) {
-  FillRect(pixs, tarRect, midCol);
-
-  int tlx, tly, brx, bry;
-  tlx = tarRect->x;
-  tly = tarRect->y;
-  brx = tarRect->x + tarRect->w;
-  bry = tarRect->y + tarRect->h;
-
-  for (int x = tlx; x < brx; ++x) {
-    SETPIX(x, tarRect->y, hiCol);
-  }
-
-  for (int y = tly; y < bry; ++y) {
-    SETPIX(tarRect->x + tarRect->w, y, hiCol);
-  }
-
-  for (int x = tlx; x < brx; ++x) {
-    SETPIX(x, tarRect->y + tarRect->h, loCol);
-  }
-
-  for (int y = tly; y < bry; ++y) {
-    SETPIX(tarRect->x, y, loCol);
-  }
-}
-
-SDL_Rect ShrinkGrow(Rect *srcRect, int amount) {
-  SDL_Rect newRect;
-
-  newRect.x = srcRect->x - amount;
-  newRect.y = srcRect->y - amount;
-  newRect.w = srcRect->w + amount;
-  newRect.h = srcRect->h + amount;
-
-  return newRect;
-}
-
+////////////////////////////////////////////////////////// RENDER FUNCTIONS
 static int animCount = 0;
 
-void RenderCat(uint16_t *pixs, Rect *srcRect, CatData &cat) {
+// UNSAFE
+void RenderFillRect(PixData& scrn, Rect *tarRect, uint16_t col) {
+	for (int x = tarRect->x; x < (tarRect->w + tarRect->x); ++x)
+		for (int y = tarRect->y; y < (tarRect->h + tarRect->y); ++y)
+			SETPIX(scrn, x, y, col);
+}
+
+Pt RenderSpriteHorFlip(PixData& scrn, const Pt &topLeft, 
+	const SpriteData &sheet, size_t sprID) {
+	const Rect &srcRect = sheet.sprRect.at(sprID);
+
+	for (int x = 0; x < srcRect.w; ++x) {
+		for (int y = 0; y < srcRect.h; ++y) {
+			switch (sheet.pixs[srcRect.w + srcRect.x - x - 1 +
+				(srcRect.y + y) * sheet.sprPitch]) {
+			case 0:
+				break;
+			case 1:
+				SETPIX(scrn, topLeft.x + x, topLeft.y + y, GBAColours[0]);
+				break;
+			case 2:
+				SETPIX(scrn, topLeft.x + x, topLeft.y + y, GBAColours[1]);
+				break;
+			case 3:
+				SETPIX(scrn, topLeft.x + x, topLeft.y + y, GBAColours[2]);
+				break;
+			case 4:
+				SETPIX(scrn, topLeft.x + x, topLeft.y + y, GBAColours[3]);
+				break;
+			case 14:
+				SETPIX(scrn, topLeft.x + x, topLeft.y + y, 0xF0F);
+				break;
+			default:
+				SETPIX(scrn, topLeft.x + x, topLeft.y + y, 0xF00);
+				break;
+			}
+		}
+	}
+
+	return Pt{ topLeft.x + srcRect.w, topLeft.y + srcRect.h };
+}
+
+Pt RenderSprite(PixData& scrn, const Pt &topLeft, const SpriteData &sheet,
+	size_t sprID) {
+	const Rect &srcRect = sheet.sprRect.at(sprID);
+
+	for (int x = 0; x < srcRect.w; ++x) {
+		for (int y = 0; y < srcRect.h; ++y) {
+			switch (sheet.pixs[(srcRect.x + x) + (srcRect.y + y) * sheet.sprPitch]) {
+			case 0:
+				break;
+			case 1:
+				SETPIX(scrn, topLeft.x + x, topLeft.y + y, GBAColours[0]);
+				break;
+			case 2:
+				SETPIX(scrn, topLeft.x + x, topLeft.y + y, GBAColours[1]);
+				break;
+			case 3:
+				SETPIX(scrn, topLeft.x + x, topLeft.y + y, GBAColours[2]);
+				break;
+			case 4:
+				SETPIX(scrn, topLeft.x + x, topLeft.y + y, GBAColours[3]);
+				break;
+			case 14:
+				SETPIX(scrn, topLeft.x + x, topLeft.y + y, 0xF0F);
+				break;
+			default:
+				SETPIX(scrn, topLeft.x + x, topLeft.y + y, 0xF00);
+				break;
+			}
+		}
+	}
+
+	return Pt{ topLeft.x + srcRect.w, topLeft.y + srcRect.h };
+}
+
+void RenderBackground(PixData& scrn, Pt topLeft, const BackgroundData &bg) {
+	Rect srcRect = bg.size;
+
+	if (topLeft.x < 0) {
+		srcRect.x += topLeft.x;
+		srcRect.x = topLeft.x;
+		topLeft.x = -topLeft.x;
+	}
+
+	if (topLeft.y < 0) {
+		srcRect.y += topLeft.y;
+		srcRect.y = topLeft.y;
+		topLeft.y = -topLeft.y;
+	}
+
+	if ((topLeft.x + srcRect.w - srcRect.x) >= scrn.size.w) {
+		srcRect.w -= (topLeft.x + srcRect.w - srcRect.x) - scrn.size.w;
+	}
+
+	if ((topLeft.y + srcRect.h - srcRect.y) >= scrn.size.h) {
+		srcRect.h -= (topLeft.y + srcRect.h - srcRect.y) - scrn.size.h;
+	}
+
+	for (int x = srcRect.x; x < srcRect.w; ++x) {
+		for (int y = srcRect.y; y < srcRect.h; ++y) {
+			switch (bg.pixs[(srcRect.x + x) + (srcRect.y + y) * bg.size.w]) {
+			case 0:
+				break;
+			case 1:
+				SETPIX(scrn, topLeft.x + x, topLeft.y + y, GBAColours[0]);
+				break;
+			case 2:
+				SETPIX(scrn, topLeft.x + x, topLeft.y + y, GBAColours[1]);
+				break;
+			case 3:
+				SETPIX(scrn, topLeft.x + x, topLeft.y + y, GBAColours[2]);
+				break;
+			case 4:
+				SETPIX(scrn, topLeft.x + x, topLeft.y + y, GBAColours[3]);
+				break;
+			case 14:
+				SETPIX(scrn, topLeft.x + x, topLeft.y + y, 0xF0F);
+				break;
+			default:
+				SETPIX(scrn, topLeft.x + x, topLeft.y + y, 0xF00);
+				break;
+			}
+		}
+	}
+}
+
+void RenderBorderRect(PixData& scrn, const Rect& tarRect, uint16_t col, int inset,
+	int outset) {
+
+	Rect topLeft = scrn.size & Rect{ tarRect.x - outset, tarRect.y - outset, outset + inset, outset + inset };
+	Rect botRight = scrn.size & Rect{ tarRect.x + tarRect.w - inset - 1, tarRect.y + tarRect.h - inset - 1, outset + inset, outset + inset };
+	
+	for (int x = topLeft.x; x < (botRight.x + botRight.w); ++x) {
+		// TOP
+		for (int y = topLeft.y; y < (topLeft.y + topLeft.h); ++y) SETPIX(scrn, x, y, col);
+
+		// BOTTOM
+		for (int y = botRight.y; y < (botRight.y + botRight.h); ++y) SETPIX(scrn, x, y, col);
+	}
+
+	for (int y = topLeft.y; y < (botRight.y + botRight.h); ++y) {
+		// LEFT
+		for (int x = topLeft.x; x < (topLeft.x + topLeft.w); ++x) SETPIX(scrn, x, y, col);
+
+		// RIGHT
+		for (int x = botRight.x; x < (botRight.x + botRight.w); ++x) SETPIX(scrn, x, y, col);
+	}
+}
+
+void RenderBezelBoxFilled(PixData &scrn, Rect *tarRect, uint16_t loCol,
+                          uint16_t midCol, uint16_t hiCol) {
+  Rect actualRect = scrn.size & *tarRect;
+  if ((actualRect.w == 0) || (actualRect.h == 0))
+	  return;
+
+  RenderFillRect(scrn, &actualRect, midCol);
+
+  int tlx, tly, brx, bry;
+  tlx = actualRect.x;
+  tly = actualRect.y;
+  brx = actualRect.x + actualRect.w - 1;
+  bry = actualRect.y + actualRect.h - 1;
+
+  if ((tarRect->y >= tly) && (tarRect->y <= bry))
+    for (int x = tlx; x < brx; ++x) {
+      SETPIX(scrn, x, tarRect->y, hiCol);
+    }
+
+  if (((tarRect->x + tarRect->w) >= tlx) && ((tarRect->x + tarRect->w-1) <= brx))
+    for (int y = tly; y < bry; ++y) {
+      SETPIX(scrn, tarRect->x + tarRect->w-1, y, hiCol);
+    }
+
+  if (((tarRect->y + tarRect->h) >= tly) && ((tarRect->y + tarRect->h-1) <= bry))
+    for (int x = tlx; x < brx; ++x) {
+      SETPIX(scrn, x, tarRect->y + tarRect->h-1, loCol);
+    }
+
+  if ((tarRect->x >= tlx) && (tarRect->x <= brx))
+    for (int y = tly; y < bry; ++y) {
+      SETPIX(scrn, tarRect->x, y, loCol);
+    }
+}
+
+void RenderCat(PixData& scrn, Rect *srcRect, CatData &cat) {
   int l = 1;
+
+  Pt topLeft = Pt{ cat.pos.x, scrn.size.h - cat.pos.y };
+
   switch (cat.state) {
     case CatData::Idle:
       l = sizeof(SPR_CAT_IDLE) / sizeof(int);
-      Sprite(pixs, cat.pos, gState.sprites, SPR_CAT_IDLE[animCount / 10 % l]);
+	  RenderSprite(scrn, topLeft, gState.sprites, SPR_CAT_IDLE[animCount / 10 % l]);
       break;
+
     case CatData::Left:
       l = sizeof(SPR_CAT_WALK) / sizeof(int);
-      SpriteHorFlip(pixs, cat.pos, gState.sprites,
+	  RenderSpriteHorFlip(scrn, topLeft, gState.sprites,
                     SPR_CAT_WALK[animCount / 7 % l]);
       break;
+
     case CatData::Right:
       l = sizeof(SPR_CAT_WALK) / sizeof(int);
-      Sprite(pixs, cat.pos, gState.sprites, SPR_CAT_WALK[animCount / 7 % l]);
+	  RenderSprite(scrn, topLeft, gState.sprites, SPR_CAT_WALK[animCount / 7 % l]);
       break;
+
     case CatData::Up:
       l = sizeof(SPR_CAT_UP) / sizeof(int);
-      Sprite(pixs, cat.pos, gState.sprites, SPR_CAT_UP[animCount / 10 % l]);
+	  RenderSprite(scrn, topLeft, gState.sprites, SPR_CAT_UP[animCount / 10 % l]);
       break;
+
     case CatData::Down:
       l = sizeof(SPR_CAT_DOWN) / sizeof(int);
-      Sprite(pixs, cat.pos, gState.sprites, SPR_CAT_DOWN[animCount / 10 % l]);
+	  RenderSprite(scrn, topLeft, gState.sprites, SPR_CAT_DOWN[animCount / 10 % l]);
       break;
+
     case CatData::PounceLeft:
       l = sizeof(SPR_CAT_POUNCE) / sizeof(int);
-      Sprite(pixs, cat.pos, gState.sprites, SPR_CAT_POUNCE[animCount / 10 % l]);
+	  RenderSprite(scrn, topLeft, gState.sprites, SPR_CAT_POUNCE[animCount / 10 % l]);
       break;
+
     case CatData::PounceRight:
       l = sizeof(SPR_CAT_POUNCE) / sizeof(int);
-      SpriteHorFlip(pixs, cat.pos, gState.sprites,
+	  RenderSpriteHorFlip(scrn, topLeft, gState.sprites,
                     SPR_CAT_POUNCE[animCount / 10 % l]);
       break;
+
     case CatData::Hold:
       l = sizeof(SPR_CAT_HOLD) / sizeof(int);
-      Sprite(pixs, cat.pos, gState.sprites, SPR_CAT_HOLD[animCount / 10 % l]);
+	  RenderSprite(scrn, topLeft, gState.sprites, SPR_CAT_HOLD[animCount / 10 % l]);
       break;
   }
 }
 
 void Render(uint16_t *pixs, Rect *srcRect) {
-  // Clear Board
-  FillRect(pixs, srcRect, GBAColours[1]);
 
-  BezelBoxFilled(pixs, &(gState.brickArea), GBAColours[2], GBAColours[1],
+	PixData screen = PixData{ pixs, *srcRect };
+  // Clear Board
+	RenderFillRect(screen, srcRect, GBAColours[1]);
+
+	RenderBezelBoxFilled(screen, &(Rect{ 5, 5, srcRect->w / 2, srcRect->h - 10 } -gState.scrollPoint), GBAColours[2], GBAColours[1],
                  GBAColours[0]);
 
-  Background(pixs, Pt{0, gState.height - gState.floor.size.h}, gState.floor);
+	RenderBackground(screen, Pt{ 0, srcRect->h - gState.floor.size.h }, gState.floor );
 
   Pt cur = Pt{6, 6};
   for (int i = 0; i < 10; ++i) {
-    cur = Sprite(pixs, cur, gState.sprites, i);
+	  cur = RenderSprite(screen, cur, gState.sprites, i);
     cur.y = 6;
     cur.x += 1;
   }
 
   int l = sizeof(SPR_WINDOW_CAT) / sizeof(int);
-  Sprite(pixs, Pt{6, 20}, gState.sprites, SPR_WINDOW_CAT[animCount / 5 % l]);
+  RenderSprite(screen, Pt{ 6, 20 }, gState.sprites, SPR_WINDOW_CAT[animCount / 5 % l]);
   ++animCount;
 
-  RenderCat(pixs, srcRect, gState.cat);
+  RenderCat(screen, srcRect, gState.cat);
+
+  if (((animCount / 30) % 2) == 0) {
+	  RenderBorderRect(screen, ShrinkGrow(screen.size, -1), 0xF00, 1, 0);
+	  RenderBorderRect(screen, ShrinkGrow(screen.size, -1), 0x00F, 0, 1);
+  }
 
   /*
   SETPIX(gState.brickArea.x, gState.brickArea.y, 0x0F00);
