@@ -91,7 +91,7 @@ int GameStep() {
         break;
 
       case SDL_MOUSEBUTTONUP:
-        DebugPt(Pt{s_event.button.x, s_event.button.y});
+        DebugPt(Pt{s_event.button.x/3, s_event.button.y/3});
 
       case SDL_KEYDOWN:
         switch (s_event.key.keysym.scancode) {

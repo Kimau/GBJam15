@@ -342,7 +342,7 @@ Rect RenderSpriteHorFlip(PixData& scrn, const Pt& topLeft,
   Rect tarRect = {topLeft.x, topLeft.y, srcRect.w, srcRect.h};
   tarRect = tarRect & scrn.size;
 
-  if ((tarRect.w < 0) || (tarRect.h < 0)) return sprRect;
+  if ((tarRect.w <= 0) || (tarRect.h <= 0)) return sprRect;
 
   srcRect.x = srcRect.x + (srcRect.w - 1 - (tarRect.x - topLeft.x));
   srcRect.y += tarRect.y - topLeft.y;
@@ -389,7 +389,7 @@ Rect RenderSprite(PixData& scrn, const Pt& topLeft, const SpriteData& sheet,
   Rect tarRect = {topLeft.x, topLeft.y, srcRect.w, srcRect.h};
   tarRect = tarRect & scrn.size;
 
-  if ((tarRect.w < 0) || (tarRect.h < 0)) return sprRect;
+  if ((tarRect.w <= 0) || (tarRect.h <= 0)) return sprRect;
 
   srcRect.x += tarRect.x - topLeft.x;
   srcRect.y += tarRect.y - topLeft.y;
@@ -619,26 +619,45 @@ void Render(uint16_t* pixs, Rect* srcRect) {
       Rect{gState.scrollPoint.x, gState.scrollPoint.y, srcRect->w, srcRect->h}};
 
   // Clear Board
-  RenderFillRect(screen, screen.size, GBAColours[1] + ((animCount / 10) % 5));
+  RenderFillRect(screen, screen.size, GBAColours[1]); //  + ((animCount / 10) % 5)
 
-  RenderBezelBoxFilled(screen, (Rect{5, 5, srcRect->w / 2, srcRect->h - 10} -
-                                gState.scrollPoint),
-                       GBAColours[2], GBAColours[1], GBAColours[0]);
-
-  RenderBackground(screen, Pt{0, srcRect->h - gState.floor.size.h},
-                   gState.floor);
-
-  Pt cur = Pt{16, 56};
-  for (int i = 0; i < 10; ++i) {
-    Rect res = RenderSprite(screen, cur, gState.sprites, i);
-    cur.x += res.w + 1;
-  }
-
+  // Windows
   int l = sizeof(SPR_WINDOW_CAT) / sizeof(int);
-  RenderSprite(screen, Pt{6, 20}, gState.sprites,
-               SPR_WINDOW_CAT[animCount / 5 % l]);
+  for (int y = 0; y < 4; ++y) {
+	  // Clothes Line
+	  if (y > 0) {
+		  Pt startPt = Pt{ screen.size.x, 30 - 32 * y + 17 };
+		  if (in(screen.size, startPt)) {
+			  int c = screen.GetI(startPt);
+			  int tog = startPt.x % 2;
+			  for (int x = 0; x < screen.size.w; ++x) {
+				  screen.pixs[c++] = GBAColours[tog*2];
+				  tog ^= 1;
+			  }
+		  }
+	  }
+
+	  for (int x = 0; x < 4; ++x) {
+		  RenderSprite(screen, Pt{ 20 + 80 * x, 30 - 32 * y }, gState.sprites, SPR_WINDOW_CAT[animCount / 5 % l]);
+	  }
+  }
   ++animCount;
 
+  // Fence
+  RenderBackground(screen, Pt{ 0, srcRect->h - gState.floor.size.h },
+	  gState.floor);
+
+  // Score
+  Pt cur = Pt{ 24 + 8, 66 };
+  for (int i = 0; i < 10; ++i) {
+	  // screen.pixs[screen.GetI(cur)] = 0xF00;
+	  int padLeft = (8 - gState.sprites.sprRect.at(i).w) / 2;
+	  cur.x += padLeft;
+	  Rect res = RenderSprite(screen, cur, gState.sprites, i);
+	  cur.x += 8 - padLeft;  // res.w + 1;
+  }
+
+  // Cat
   RenderCat(screen, srcRect, gState.cat);
 
   // Flashing Border
@@ -650,5 +669,6 @@ void Render(uint16_t* pixs, Rect* srcRect) {
 
 // DEBUG
 void DebugPt(Pt m) {
-	SDL_Log("Mouse [%d,%d] -> [%d,%d]", m.x, m.y, m.x + gState.scrollPoint.x, m.y + gState.scrollPoint.y);
+  SDL_Log("Mouse [%d,%d] -> [%d,%d]", m.x, m.y, m.x + gState.scrollPoint.x,
+          m.y + gState.scrollPoint.y);
 }
