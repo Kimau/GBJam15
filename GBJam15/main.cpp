@@ -29,7 +29,6 @@ SDLAPP *CreateApp() {
     return nullptr;
   }
 
-
   SDLAPP *pApp = new SDLAPP();
   pApp->m_window = SDL_CreateWindow(SCREEN_TITLE, 100, 100, SCREEN_WIDTH,
                                     SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
@@ -91,39 +90,42 @@ int GameStep() {
         }
         break;
 
-	  case SDL_KEYDOWN:
-		  switch (s_event.key.keysym.scancode) {
-		  case SDL_SCANCODE_UP:
-			  buttons.up = 3;
-			  break;
-		  case SDL_SCANCODE_DOWN:
-			  buttons.down = 3;
-			  break;
-		  case SDL_SCANCODE_LEFT:
-			  buttons.left = 3;
-			  break;
-		  case SDL_SCANCODE_RIGHT:
-			  buttons.right = 3;
-			  break;
-		  }
-		  break;
+      case SDL_MOUSEBUTTONUP:
+        DebugPt(Pt{s_event.button.x, s_event.button.y});
 
-	  case SDL_KEYUP:
-		  switch (s_event.key.keysym.scancode) {
-		  case SDL_SCANCODE_UP:
-			  buttons.up = 0;
-			  break;
-		  case SDL_SCANCODE_DOWN:
-			  buttons.down = 0;
-			  break;
-		  case SDL_SCANCODE_LEFT:
-			  buttons.left = 0;
-			  break;
-		  case SDL_SCANCODE_RIGHT:
-			  buttons.right = 0;
-			  break;
-		  }
-		  break;
+      case SDL_KEYDOWN:
+        switch (s_event.key.keysym.scancode) {
+          case SDL_SCANCODE_UP:
+            buttons.up = 3;
+            break;
+          case SDL_SCANCODE_DOWN:
+            buttons.down = 3;
+            break;
+          case SDL_SCANCODE_LEFT:
+            buttons.left = 3;
+            break;
+          case SDL_SCANCODE_RIGHT:
+            buttons.right = 3;
+            break;
+        }
+        break;
+
+      case SDL_KEYUP:
+        switch (s_event.key.keysym.scancode) {
+          case SDL_SCANCODE_UP:
+            buttons.up = 0;
+            break;
+          case SDL_SCANCODE_DOWN:
+            buttons.down = 0;
+            break;
+          case SDL_SCANCODE_LEFT:
+            buttons.left = 0;
+            break;
+          case SDL_SCANCODE_RIGHT:
+            buttons.right = 0;
+            break;
+        }
+        break;
 
       case SDL_QUIT:
         Log("Event: QUIT");
@@ -155,7 +157,7 @@ int main(int argc, char *argv[]) {
       SDL_CreateTexture(pApp->m_renderer, SDL_PIXELFORMAT_RGB444,
                         SDL_TEXTUREACCESS_STREAMING, GB_WIDTH, GB_HEIGHT);
 
-  buttons = { 0, 0, 0, 0 };
+  buttons = {0, 0, 0, 0};
   StartGame(GB_WIDTH, GB_HEIGHT);
 
   if (GameStep() == 0) {
@@ -166,7 +168,7 @@ int main(int argc, char *argv[]) {
   // RenderTestScene(pixs, srcRect);
 
   do {
-	  Render(pixs, &Rect{ srcRect.x, srcRect.y, srcRect.w, srcRect.h });
+    Render(pixs, &Rect{srcRect.x, srcRect.y, srcRect.w, srcRect.h});
     SDL_UpdateTexture(pBackBuffTex, &srcRect, pixs, GB_WIDTH * 2);
 
     SDL_RenderClear(pApp->m_renderer);

@@ -21,4 +21,7 @@ extern "C" {
 
 	void Tick(ButState* buttons);
 	void Render(uint16_t* pixs, Rect* srcRect);
+
+	// DEBUG
+	void DebugPt(Pt m);
 };
