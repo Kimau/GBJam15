@@ -1,4 +1,4 @@
-#include "tetris.h"
+#include "s_animCounter.h"
 #include <vector>
 #include <algorithm>
 
@@ -8,16 +8,17 @@ typedef std::vector<Rect> ListOfRect;
 ////// CONSTS
 const uint16_t GBAColours[4] = {0x141, 0x363, 0x9B1, 0xAC1};
 const int FLOOR_HEIGHT = 5;
-const Uint8 CAT_FRAMES_TO_RUN = 20;
-const Uint8 CAT_HEIGHT = 12;
-const Uint8 CAT_BIG_JUMP_FRAMES = 20;
-const Uint8 CAT_SMALL_JUMP_FRAMES = 9;
+const int FENCE_HEIGHT = 90;
+const int CAT_FRAMES_TO_RUN = 20;
+const int CAT_HEIGHT = 12;
+const int CAT_BIG_JUMP_FRAMES = 16;
+const int CAT_SMALL_JUMP_FRAMES = 9;
 const int CAMERA_LEFT_BOUND = 50;
 const int CAMERA_RIGHT_BOUND = 60;
 
 ///////// SPRITE SHEET DATA
 int SPR_COUNT = 0;
-int SPR_NUM[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+int SPR_NUM[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
 int SPR_MOUSE_IDLE[] = {0};
 int SPR_MOUSE_RUN[] = {0, 1};
 int SPR_FOOD[] = {0, 1};
@@ -58,6 +59,17 @@ struct CatData {
 };
 
 struct SpriteData {
+  enum Anchor {
+    TOP_LEFT,
+    TOP,
+    TOP_RIGHT,
+    LEFT,
+    MIDDLE,
+    RIGHT,
+    BOTTOM_LEFT,
+    BOTTOM,
+    BOTTOM_RIGHT
+  };
   uint8_t* pixs;
   int sprPitch;
   ListOfRect sprRect;
@@ -83,6 +95,8 @@ struct GameStateData {
   Pt scrollPoint;
   Rect level_bounds;
 };
+
+static int s_animCount = 0;
 
 /////// FUNCTIONS - RECT / PT
 
@@ -287,7 +301,7 @@ void SetupMySheet() {
   SDL_Log("Setup %d sprites", SPR_COUNT);
 }
 
-GameStateData* StartGame(uint16_t width, uint16_t height) {
+GameStateData* GameSetup(uint16_t width, uint16_t height) {
   GameStateData* pGameState = new GameStateData();
   pGameState->screen_width = width;
   pGameState->screen_height = height;
@@ -317,36 +331,35 @@ void CatSetState(CatData& cat, CatData::CState newState) {
                                     (newState == CatData::PounceRight));
 }
 
-void CatCheckForLanding(CatData &cat)
-{
-	if (cat.pos.y <= FLOOR_HEIGHT) {
-		cat.pos.y = FLOOR_HEIGHT;
-		cat.isGrounded = true;
-		cat.upFrames = 0;
+void CatCheckForLanding(CatData& cat) {
+  if (cat.pos.y <= FLOOR_HEIGHT) {
+    cat.pos.y = FLOOR_HEIGHT;
+    cat.isGrounded = true;
+    cat.upFrames = 0;
 
-		if (cat.state == CatData::PounceRight)
-			CatSetState(cat, CatData::Right);
-		else if (cat.state == CatData::PounceLeft)
-			CatSetState(cat, CatData::Left);
-		else
-			CatSetState(cat, CatData::Idle);
-	}
+    if (cat.state == CatData::PounceRight)
+      CatSetState(cat, CatData::Right);
+    else if (cat.state == CatData::PounceLeft)
+      CatSetState(cat, CatData::Left);
+    else
+      CatSetState(cat, CatData::Idle);
+  }
 }
 
 void TickCat(CatData& cat, ButState* buttons) {
-	// Grounded and in Control
+  // Grounded and in Control
   if (cat.isGrounded) {
-
-	  if (buttons->left > 0)
-		  CatSetState(cat, CatData::Left);
-	  else if (buttons->right > 0)
-		  CatSetState(cat, CatData::Right);
-	  else
-		  CatSetState(cat, CatData::Idle);
+    if (buttons->left > 0)
+      CatSetState(cat, CatData::Left);
+    else if (buttons->right > 0)
+      CatSetState(cat, CatData::Right);
+    else
+      CatSetState(cat, CatData::Idle);
 
     if (buttons->up > 0) {
-		cat.upFrames = (cat.isRunning) ? CAT_BIG_JUMP_FRAMES : CAT_SMALL_JUMP_FRAMES;
-		cat.isGrounded = false;
+      cat.upFrames =
+          (cat.isRunning) ? CAT_BIG_JUMP_FRAMES : CAT_SMALL_JUMP_FRAMES;
+      cat.isGrounded = false;
 
       switch (cat.state) {
         case CatData::Left:
@@ -360,9 +373,8 @@ void TickCat(CatData& cat, ButState* buttons) {
           break;
       }
     }
-  }
-  else {
-	  cat.upFrames -= 1;
+  } else {
+    cat.upFrames -= 1;
   }
 
   switch (cat.state) {
@@ -371,9 +383,9 @@ void TickCat(CatData& cat, ButState* buttons) {
       break;
     case CatData::Left:
       if (cat.isRunning) {
-        cat.pos.x -= 6;
+        cat.pos.x -= 8;
       } else {
-        cat.pos.x -= 3;
+        cat.pos.x -= 4;
       }
 
       if (++cat.framesRunning > CAT_FRAMES_TO_RUN) {
@@ -382,9 +394,9 @@ void TickCat(CatData& cat, ButState* buttons) {
       break;
     case CatData::Right:
       if (cat.isRunning) {
-        cat.pos.x += 6;
+        cat.pos.x += 8;
       } else {
-        cat.pos.x += 3;
+        cat.pos.x += 4;
       }
       if (++cat.framesRunning > CAT_FRAMES_TO_RUN) {
         cat.isRunning = true;
@@ -395,20 +407,18 @@ void TickCat(CatData& cat, ButState* buttons) {
     case CatData::Down:
       break;
     case CatData::PounceLeft:
-		if (cat.isRunning) {
-			cat.pos.x -= 5;
-		}
-		else {
-			cat.pos.x -= 2;
-		}
+      if (cat.isRunning) {
+        cat.pos.x -= 6;
+      } else {
+        cat.pos.x -= 3;
+      }
       break;
     case CatData::PounceRight:
-		if (cat.isRunning) {
-			cat.pos.x += 5;
-		}
-		else {
-			cat.pos.x += 2;
-		}
+      if (cat.isRunning) {
+        cat.pos.x += 6;
+      } else {
+        cat.pos.x += 3;
+      }
       break;
     case CatData::Hold:
       cat.framesRunning = 0;
@@ -416,28 +426,25 @@ void TickCat(CatData& cat, ButState* buttons) {
   }
 
   if (cat.isGrounded == false) {
-	  if (cat.isRunning)
-		cat.pos.y += cat.upFrames / 3;
-	  else
-		  cat.pos.y += cat.upFrames;
+    if (cat.isRunning)
+      cat.pos.y += cat.upFrames / 2;
+    else
+      cat.pos.y += cat.upFrames;
 
-	  if (cat.upFrames < 0) {
-		  CatCheckForLanding(cat);
-	  }
+    if (cat.upFrames < 0) {
+      CatCheckForLanding(cat);
+    }
   }
-
-
 }
 
 void Tick(GameStateData* pGameData, ButState* buttons) {
   TickCat(pGameData->cat, buttons);
 
-
   // Force into Game Bounds
-  if (pGameData->cat.pos.x < CAT_HEIGHT/2)
-	  pGameData->cat.pos.x = CAT_HEIGHT/2;
-  else if (pGameData->cat.pos.x >(pGameData->level_bounds.w - CAT_HEIGHT * 2))
-	  pGameData->cat.pos.x = (pGameData->level_bounds.w - CAT_HEIGHT * 2);
+  if (pGameData->cat.pos.x < CAT_HEIGHT / 2)
+    pGameData->cat.pos.x = CAT_HEIGHT / 2;
+  else if (pGameData->cat.pos.x > (pGameData->level_bounds.w - CAT_HEIGHT * 2))
+    pGameData->cat.pos.x = (pGameData->level_bounds.w - CAT_HEIGHT * 2);
 
   // Scroll Screen
   Pt catScreenPt = pGameData->cat.pos - pGameData->scrollPoint;
@@ -465,7 +472,7 @@ void Tick(GameStateData* pGameData, ButState* buttons) {
   } else if ((pGameData->scrollPoint.x + pGameData->screen_width) >=
              pGameData->level_bounds.w) {
     pGameData->scrollPoint.x =
-        pGameData->level_bounds.w - pGameData->screen_width - 1;
+        pGameData->level_bounds.w - pGameData->screen_width;
   }
 
   // Clear Press
@@ -473,13 +480,15 @@ void Tick(GameStateData* pGameData, ButState* buttons) {
   buttons->down &= 1;
   buttons->left &= 1;
   buttons->right &= 1;
+
+  // Anim Step
+  ++s_animCount;
 }
 
 ////////////////////////////////////////////////////////// RENDER FUNCTIONS
-static int animCount = 0;
-
 void RenderFillRect(PixData& scrn, const Rect& origTarRect, uint16_t col) {
   Rect tarRect = scrn.size & origTarRect;
+  if ((tarRect.w <= 0) || (tarRect.h <= 0)) return;
 
   int c = scrn.GetI(Pt{tarRect.x, tarRect.y});
   for (int y = 0; y < tarRect.h; ++y) {
@@ -488,13 +497,56 @@ void RenderFillRect(PixData& scrn, const Rect& origTarRect, uint16_t col) {
   }
 }
 
-Rect RenderSpriteHorFlip(PixData& scrn, const Pt& topLeft,
-                         const SpriteData& sheet, size_t sprID) {
+Rect RenderSpriteHorFlip(PixData& scrn, Pt topLeft, const SpriteData& sheet,
+                         size_t sprID,
+                         SpriteData::Anchor anchor = SpriteData::TOP_LEFT) {
   Rect sprRect = sheet.sprRect.at(sprID);
   Rect srcRect = sprRect;
   Rect tarRect = {topLeft.x, topLeft.y, srcRect.w, srcRect.h};
-  tarRect = tarRect & scrn.size;
 
+  // Anchor
+  switch (anchor) {
+    case SpriteData::TOP_LEFT:
+    case SpriteData::TOP:
+    case SpriteData::TOP_RIGHT:
+      break;
+    case SpriteData::LEFT:
+    case SpriteData::MIDDLE:
+    case SpriteData::RIGHT:
+      tarRect.y -= sprRect.h / 2;
+      topLeft.y -= sprRect.h / 2;
+      break;
+    case SpriteData::BOTTOM_LEFT:
+    case SpriteData::BOTTOM:
+    case SpriteData::BOTTOM_RIGHT:
+      tarRect.y -= sprRect.h;
+      topLeft.y -= sprRect.h;
+      break;
+  }
+
+  switch (anchor) {
+    case SpriteData::TOP_LEFT:
+    case SpriteData::LEFT:
+    case SpriteData::BOTTOM_LEFT:
+      break;
+
+    case SpriteData::TOP:
+    case SpriteData::MIDDLE:
+    case SpriteData::BOTTOM:
+      tarRect.x -= sprRect.w / 2;
+      topLeft.x -= sprRect.w / 2;
+      break;
+
+    case SpriteData::TOP_RIGHT:
+    case SpriteData::RIGHT:
+    case SpriteData::BOTTOM_RIGHT:
+      tarRect.x -= sprRect.w;
+      topLeft.x -= sprRect.w;
+      break;
+  }
+
+  // Limit to screen
+  tarRect = tarRect & scrn.size;
   if ((tarRect.w <= 0) || (tarRect.h <= 0)) return sprRect;
 
   srcRect.x = srcRect.x + (srcRect.w - 1 - (tarRect.x - topLeft.x));
@@ -535,13 +587,56 @@ Rect RenderSpriteHorFlip(PixData& scrn, const Pt& topLeft,
   return sprRect;
 }
 
-Rect RenderSprite(PixData& scrn, const Pt& topLeft, const SpriteData& sheet,
-                  size_t sprID) {
+Rect RenderSprite(PixData& scrn, Pt topLeft, const SpriteData& sheet,
+                  size_t sprID,
+                  SpriteData::Anchor anchor = SpriteData::TOP_LEFT) {
   Rect sprRect = sheet.sprRect.at(sprID);
   Rect srcRect = sprRect;
   Rect tarRect = {topLeft.x, topLeft.y, srcRect.w, srcRect.h};
-  tarRect = tarRect & scrn.size;
 
+  // Anchor
+  switch (anchor) {
+    case SpriteData::TOP_LEFT:
+    case SpriteData::TOP:
+    case SpriteData::TOP_RIGHT:
+      break;
+    case SpriteData::LEFT:
+    case SpriteData::MIDDLE:
+    case SpriteData::RIGHT:
+      tarRect.y -= sprRect.h / 2;
+      topLeft.y -= sprRect.h / 2;
+      break;
+    case SpriteData::BOTTOM_LEFT:
+    case SpriteData::BOTTOM:
+    case SpriteData::BOTTOM_RIGHT:
+      tarRect.y -= sprRect.h;
+      topLeft.y -= sprRect.h;
+      break;
+  }
+
+  switch (anchor) {
+    case SpriteData::TOP_LEFT:
+    case SpriteData::LEFT:
+    case SpriteData::BOTTOM_LEFT:
+      break;
+
+    case SpriteData::TOP:
+    case SpriteData::MIDDLE:
+    case SpriteData::BOTTOM:
+      tarRect.x -= sprRect.w / 2;
+      topLeft.x -= sprRect.w / 2;
+      break;
+
+    case SpriteData::TOP_RIGHT:
+    case SpriteData::RIGHT:
+    case SpriteData::BOTTOM_RIGHT:
+      tarRect.x -= sprRect.w;
+      topLeft.x -= sprRect.w;
+      break;
+  }
+
+  // Limit to screen
+  tarRect = tarRect & scrn.size;
   if ((tarRect.w <= 0) || (tarRect.h <= 0)) return sprRect;
 
   srcRect.x += tarRect.x - topLeft.x;
@@ -632,8 +727,8 @@ void RenderBorderRect(PixData& scrn, const Rect& tarRect, uint16_t col,
   int c = 0;
   Rect topLeft = scrn.size & Rect{tarRect.x - outset, tarRect.y - outset,
                                   outset + inset, outset + inset};
-  Rect botRight = scrn.size & Rect{tarRect.x + tarRect.w - inset - 1,
-                                   tarRect.y + tarRect.h - inset - 1,
+  Rect botRight = scrn.size & Rect{tarRect.x + tarRect.w - inset,
+                                   tarRect.y + tarRect.h - inset,
                                    outset + inset, outset + inset};
 
   // TOP
@@ -714,50 +809,79 @@ void RenderCat(PixData& scrn, Rect* srcRect, CatData& cat,
                SpriteData& sprites) {
   int l = 1;
 
-  Pt topLeft = Pt{ cat.pos.x, scrn.size.h - cat.pos.y - CAT_HEIGHT };
+  Pt topLeft = Pt{cat.pos.x, scrn.size.h - cat.pos.y - CAT_HEIGHT};
 
   switch (cat.state) {
     case CatData::Idle:
       l = sizeof(SPR_CAT_IDLE) / sizeof(int);
-      RenderSprite(scrn, topLeft, sprites, SPR_CAT_IDLE[animCount / 10 % l]);
+      RenderSprite(scrn, topLeft, sprites, SPR_CAT_IDLE[s_animCount / 10 % l]);
       break;
 
     case CatData::Left:
       l = sizeof(SPR_CAT_WALK) / sizeof(int);
       RenderSpriteHorFlip(scrn, topLeft, sprites,
-                          SPR_CAT_WALK[animCount / 7 % l]);
+                          SPR_CAT_WALK[s_animCount / 7 % l]);
       break;
 
     case CatData::Right:
       l = sizeof(SPR_CAT_WALK) / sizeof(int);
-      RenderSprite(scrn, topLeft, sprites, SPR_CAT_WALK[animCount / 7 % l]);
+      RenderSprite(scrn, topLeft, sprites, SPR_CAT_WALK[s_animCount / 7 % l]);
       break;
 
     case CatData::Up:
       l = sizeof(SPR_CAT_UP) / sizeof(int);
-      RenderSprite(scrn, topLeft, sprites, SPR_CAT_UP[animCount / 10 % l]);
+      RenderSprite(scrn, topLeft, sprites, SPR_CAT_UP[s_animCount / 10 % l]);
       break;
 
     case CatData::Down:
       l = sizeof(SPR_CAT_DOWN) / sizeof(int);
-      RenderSprite(scrn, topLeft, sprites, SPR_CAT_DOWN[animCount / 10 % l]);
+      RenderSprite(scrn, topLeft, sprites, SPR_CAT_DOWN[s_animCount / 10 % l]);
       break;
 
     case CatData::PounceLeft:
       l = sizeof(SPR_CAT_POUNCE) / sizeof(int);
-	  RenderSpriteHorFlip(scrn, topLeft, sprites, SPR_CAT_POUNCE[animCount / 10 % l]);
+      RenderSpriteHorFlip(scrn, topLeft, sprites,
+                          SPR_CAT_POUNCE[s_animCount / 10 % l]);
       break;
 
     case CatData::PounceRight:
       l = sizeof(SPR_CAT_POUNCE) / sizeof(int);
-	  RenderSprite(scrn, topLeft, sprites,
-                          SPR_CAT_POUNCE[animCount / 10 % l]);
+      RenderSprite(scrn, topLeft, sprites,
+                   SPR_CAT_POUNCE[s_animCount / 10 % l]);
       break;
 
     case CatData::Hold:
       l = sizeof(SPR_CAT_HOLD) / sizeof(int);
-      RenderSprite(scrn, topLeft, sprites, SPR_CAT_HOLD[animCount / 10 % l]);
+      RenderSprite(scrn, topLeft, sprites, SPR_CAT_HOLD[s_animCount / 10 % l]);
       break;
+  }
+}
+
+void RenderDEBUGSPRITE(PixData& scrn, SpriteData& sprites) {
+  Pt c = Pt{1, -(s_animCount / 10) % scrn.size.h};
+
+  int mh = 0;
+
+  for (size_t i = 0; i < sprites.sprRect.size(); ++i) {
+    Rect r = RenderSprite(scrn, c, sprites, i);
+    if ((c.x + r.w + 3) > scrn.size.w) {
+      r.x = c.x;
+      r.y = c.y;
+      RenderFillRect(scrn, r, GBAColours[1]);
+      c.x = 1;
+      c.y += mh + 3;
+      mh = 0;
+      --i;
+    } else {
+      r.x = c.x;
+      r.y = c.y;
+
+      RenderBorderRect(scrn, r, 0x000, 0, 1);
+      RenderSprite(scrn, c, sprites, i);
+
+      if (mh < r.h) mh = r.h;
+      c.x += r.w + 3;
+    }
   }
 }
 
@@ -770,40 +894,42 @@ void Render(GameStateData* pGameData, uint16_t* pixs, Rect* srcRect) {
   RenderFillRect(screen, screen.size,
                  GBAColours[1]);  //  + ((animCount / 10) % 5)
 
-  // Windows
+  // Building
   int l = sizeof(SPR_WINDOW_CAT) / sizeof(int);
   for (int y = 0; y < 4; ++y) {
     // Clothes Line
-    if (y > 0) {
-      Pt startPt = Pt{screen.size.x, 30 - 32 * y + 17};
-      if (in(screen.size, startPt)) {
-        int c = screen.GetI(startPt);
-        int tog = startPt.x % 2;
-        for (int x = 0; x < screen.size.w; ++x) {
-          screen.pixs[c++] = GBAColours[tog * 2];
-          tog ^= 1;
-        }
+    Pt startPt =
+        Pt{screen.size.x, screen.size.h - (FENCE_HEIGHT + 32 + 32 * y)};
+    if (in(screen.size, startPt)) {
+      int c = screen.GetI(startPt);
+      int tog = startPt.x % 2;
+      for (int x = 0; x < screen.size.w; ++x) {
+        screen.pixs[c++] = GBAColours[tog * 2];
+        tog ^= 1;
       }
     }
 
+    // Windows
     for (int x = 0; x < 4; ++x) {
-      RenderSprite(screen, Pt{20 + 80 * x, 30 - 32 * y}, pGameData->sprites,
-                   SPR_WINDOW_CAT[animCount / 5 % l]);
+      RenderSprite(screen,
+                   Pt{20 + 80 * x, screen.size.h - (FENCE_HEIGHT + 32 * y)},
+                   pGameData->sprites, SPR_WINDOW_CAT[s_animCount / 5 % l],
+                   SpriteData::BOTTOM_LEFT);
     }
   }
-  ++animCount;
 
   // Fence
-  RenderBackground(screen, Pt{0, srcRect->h - pGameData->floor.size.h},
+  RenderBackground(screen, Pt{0, screen.size.h - pGameData->floor.size.h},
                    pGameData->floor);
 
   // Score
-  Pt cur = Pt{24 + 8, 66};
-  for (int i = 0; i < 10; ++i) {
+  Pt cur = Pt{24 + 16, screen.size.h - 79};
+  int scoreBlank[8] = {0, 0, 0, 10, 0, 0, 0, 0};
+  for (int i = 0; i < 8; ++i) {
     // screen.pixs[screen.GetI(cur)] = 0xF00;
-    int padLeft = (8 - pGameData->sprites.sprRect.at(i).w) / 2;
+    int padLeft = (8 - pGameData->sprites.sprRect.at(scoreBlank[i]).w) / 2;
     cur.x += padLeft;
-    Rect res = RenderSprite(screen, cur, pGameData->sprites, i);
+    Rect res = RenderSprite(screen, cur, pGameData->sprites, scoreBlank[i]);
     cur.x += 8 - padLeft;  // res.w + 1;
   }
 
@@ -811,7 +937,7 @@ void Render(GameStateData* pGameData, uint16_t* pixs, Rect* srcRect) {
   RenderCat(screen, srcRect, pGameData->cat, pGameData->sprites);
 
   // Flashing Border
-  if ((0) && (((animCount / 30) % 2) == 0)) {
+  if ((0) && (((s_animCount / 30) % 2) == 0)) {
     RenderBorderRect(screen, ShrinkGrow(screen.size, -1), 0xF00, 1, 0);
     RenderBorderRect(screen, ShrinkGrow(screen.size, -1), 0x00F, 0, 1);
   }

@@ -19,7 +19,7 @@ class ButState {
   int up, down, left, right;
 };
 
-GameStateData* StartGame(uint16_t width, uint16_t height);
+GameStateData* GameSetup(uint16_t width, uint16_t height);
 
 void Tick(GameStateData* pGameState, ButState* buttons);
 void Render(GameStateData* pGameState, uint16_t* pixs, Rect* srcRect);

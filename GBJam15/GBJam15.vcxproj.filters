@@ -18,12 +18,12 @@
     <ClCompile Include="main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="tetris.cpp">
+    <ClCompile Include="s_animCounter.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="tetris.h">
+    <ClInclude Include="s_animCounter.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

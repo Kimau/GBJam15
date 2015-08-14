@@ -1,13 +1,21 @@
 #include "SDL.h"
 #include <iostream>
 
-#include "tetris.h"
+#include "s_animCounter.h"
 
 #define SCREEN_TITLE "GBJam #15 - Kimau"
-#define SCREEN_WIDTH 480   // 160
-#define SCREEN_HEIGHT 432  // 144
+
+#if 0  // Big Res
+#define SCREEN_WIDTH 640
+#define SCREEN_HEIGHT 480
+#define GB_WIDTH 320
+#define GB_HEIGHT 240
+#else
+#define SCREEN_WIDTH 480
+#define SCREEN_HEIGHT 432
 #define GB_WIDTH 160
 #define GB_HEIGHT 144
+#endif
 
 void Log(const char *msg) {
   std::cout << "LOG:" << msg << std::endl;  // Bleh
@@ -159,7 +167,7 @@ int main(int argc, char *argv[]) {
                         SDL_TEXTUREACCESS_STREAMING, GB_WIDTH, GB_HEIGHT);
 
   buttons = {0, 0, 0, 0};
-  pGameState = StartGame(GB_WIDTH, GB_HEIGHT);
+  pGameState = GameSetup(GB_WIDTH, GB_HEIGHT);
 
   if (GameStep() == 0) {
     CleanQuit(pApp);
