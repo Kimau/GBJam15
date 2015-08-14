@@ -73,6 +73,7 @@ const Uint32 s_FrameRate = 1000 / 30;
 static SDL_Event s_event;
 static Uint32 start_time = SDL_GetTicks();
 static ButState buttons;
+static GameStateData *pGameState = NULL;
 
 int GameStep() {
   start_time = SDL_GetTicks();
@@ -91,7 +92,7 @@ int GameStep() {
         break;
 
       case SDL_MOUSEBUTTONUP:
-        DebugPt(Pt{s_event.button.x/3, s_event.button.y/3});
+        DebugPt(pGameState, Pt{s_event.button.x / 3, s_event.button.y / 3});
 
       case SDL_KEYDOWN:
         switch (s_event.key.keysym.scancode) {
@@ -139,7 +140,7 @@ int GameStep() {
   }
 
   // Update
-  Tick(&buttons);
+  Tick(pGameState, &buttons);
 
   return 1;
 }
@@ -158,7 +159,7 @@ int main(int argc, char *argv[]) {
                         SDL_TEXTUREACCESS_STREAMING, GB_WIDTH, GB_HEIGHT);
 
   buttons = {0, 0, 0, 0};
-  StartGame(GB_WIDTH, GB_HEIGHT);
+  pGameState = StartGame(GB_WIDTH, GB_HEIGHT);
 
   if (GameStep() == 0) {
     CleanQuit(pApp);
@@ -168,7 +169,7 @@ int main(int argc, char *argv[]) {
   // RenderTestScene(pixs, srcRect);
 
   do {
-    Render(pixs, &Rect{srcRect.x, srcRect.y, srcRect.w, srcRect.h});
+    Render(pGameState, pixs, &Rect{srcRect.x, srcRect.y, srcRect.w, srcRect.h});
     SDL_UpdateTexture(pBackBuffTex, &srcRect, pixs, GB_WIDTH * 2);
 
     SDL_RenderClear(pApp->m_renderer);

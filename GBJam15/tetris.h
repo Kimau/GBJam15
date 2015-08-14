@@ -2,26 +2,28 @@
 
 extern "C" {
 
-	class Rect {
-	public:
-		int x, y, w, h;
-	};
+struct GameStateData;
 
-	class Pt {
-	public:
-		int x, y;
-	};
+class Rect {
+ public:
+  int x, y, w, h;
+};
 
-	class ButState {
-	public:
-		int up, down, left, right;
-	};
+class Pt {
+ public:
+  int x, y;
+};
 
-	void StartGame(uint16_t width, uint16_t height);
+class ButState {
+ public:
+  int up, down, left, right;
+};
 
-	void Tick(ButState* buttons);
-	void Render(uint16_t* pixs, Rect* srcRect);
+GameStateData* StartGame(uint16_t width, uint16_t height);
 
-	// DEBUG
-	void DebugPt(Pt m);
+void Tick(GameStateData* pGameState, ButState* buttons);
+void Render(GameStateData* pGameState, uint16_t* pixs, Rect* srcRect);
+
+// DEBUG
+void DebugPt(GameStateData* pGameState, Pt m);
 };
