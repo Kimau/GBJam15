@@ -18,6 +18,7 @@ int SPR_FOOD[] = {0, 1};
 int SPR_WINDOW_CAT[] = {0, 2, 4, 6, 8, 10, 10, 10, 8, 6, 4, 2, 0};
 int SPR_WINDOW_EMPTY[] = {1, 3, 5, 7, 9, 11, 11, 11, 9, 7, 5, 3, 1};
 int SPR_SQUEEK[] = {0};
+int SPR_BIN_MID[] = { 0 };
 int SPR_BIN_TOP[] = {0};
 int SPR_CAT_IDLE[] = {0, 1, 2, 3, 4, 5, 6, 7};
 int SPR_CAT_WALK[] = {0, 1, 2, 3};
@@ -245,6 +246,7 @@ void SetupMySheet() {
   SPR_COUNT += 12;
 
   SPR_COUNT += SetupSpriteArray(SPR_SQUEEK, sizeof(SPR_SQUEEK) / sizeof(int));
+  SPR_COUNT += SetupSpriteArray(SPR_BIN_MID, sizeof(SPR_BIN_MID) / sizeof(int));
   SPR_COUNT += SetupSpriteArray(SPR_BIN_TOP, sizeof(SPR_BIN_TOP) / sizeof(int));
   SPR_COUNT +=
       SetupSpriteArray(SPR_CAT_IDLE, sizeof(SPR_CAT_IDLE) / sizeof(int));
