@@ -86,10 +86,10 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
-    <ClCompile Include="s_animCounter.cpp" />
+    <ClCompile Include="cat.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="s_animCounter.h" />
+    <ClInclude Include="cat.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

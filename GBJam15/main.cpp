@@ -1,11 +1,11 @@
 #include "SDL.h"
 #include <iostream>
 
-#include "s_animCounter.h"
+#include "cat.h"
 
 #define SCREEN_TITLE "GBJam #15 - Kimau"
 
-#if 0  // Big Res
+#if 1  // Big Res
 #define SCREEN_WIDTH 640
 #define SCREEN_HEIGHT 480
 #define GB_WIDTH 320

@@ -1,4 +1,4 @@
-#include "s_animCounter.h"
+#include "cat.h"
 #include <vector>
 #include <algorithm>
 
@@ -34,7 +34,7 @@ int SPR_CAT_HOLD[] = {0};
 int SPR_CAT_DOWN[] = {0};
 int SPR_CAT_1[] = {0};
 int SPR_CAT_POUNCE[] = {0};
-int SPR_CAT_2[] = {0, 1};
+int SPR_CAT_POUNCE_DOWN[] = {0, 1};
 int SPR_DOG[] = {0, 1};
 int SPR_FIGHT[] = {0, 1, 2};
 
@@ -45,8 +45,10 @@ struct CatData {
     Idle,
     Left,
     Right,
-    Up,
     Down,
+	DownLeft,
+	DownRight,
+	Up,
     PounceLeft,
     PounceRight,
     Hold
@@ -93,7 +95,10 @@ struct GameStateData {
   SpriteData sprites;
   BackgroundData floor;
   Pt scrollPoint;
-  Rect level_bounds;
+  Rect level_bounds;  
+
+  // Alley 
+  ListOfRect bins;
 };
 
 static int s_animCount = 0;
@@ -294,7 +299,7 @@ void SetupMySheet() {
   SPR_COUNT += SetupSpriteArray(SPR_CAT_1, sizeof(SPR_CAT_1) / sizeof(int));
   SPR_COUNT +=
       SetupSpriteArray(SPR_CAT_POUNCE, sizeof(SPR_CAT_POUNCE) / sizeof(int));
-  SPR_COUNT += SetupSpriteArray(SPR_CAT_2, sizeof(SPR_CAT_2) / sizeof(int));
+  SPR_COUNT += SetupSpriteArray(SPR_CAT_POUNCE_DOWN, sizeof(SPR_CAT_POUNCE_DOWN) / sizeof(int));
   SPR_COUNT += SetupSpriteArray(SPR_DOG, sizeof(SPR_DOG) / sizeof(int));
   SPR_COUNT += SetupSpriteArray(SPR_FIGHT, sizeof(SPR_FIGHT) / sizeof(int));
 
@@ -314,10 +319,22 @@ GameStateData* GameSetup(uint16_t width, uint16_t height) {
   SetupBackground(pGameState->floor, "floor.bmp");
   SetupMySheet();
 
+  // Setup Cat
   pGameState->cat.pos = {30, FLOOR_HEIGHT};
   pGameState->cat.state = CatData::Idle;
   pGameState->cat.isGrounded = true;
   pGameState->cat.upFrames = 0;
+  pGameState->cat.isRunning = false;
+
+  // Setup Bins
+  int binPos[6] = { 27, 63, 107, 155, 243, 283 };
+  int binHeight[6] = { 3, 4, 3, 3, 3, 4 };
+  for (int i = 0; i < 6; ++i)
+  {
+	  pGameState->bins.push_back(Rect{ binPos[i], (FLOOR_HEIGHT + 5), 27, binHeight[i]*8+2 });
+  }
+  
+
   return pGameState;
 }
 
@@ -331,19 +348,55 @@ void CatSetState(CatData& cat, CatData::CState newState) {
                                     (newState == CatData::PounceRight));
 }
 
-void CatCheckForLanding(CatData& cat) {
-  if (cat.pos.y <= FLOOR_HEIGHT) {
-    cat.pos.y = FLOOR_HEIGHT;
-    cat.isGrounded = true;
-    cat.upFrames = 0;
 
-    if (cat.state == CatData::PounceRight)
-      CatSetState(cat, CatData::Right);
-    else if (cat.state == CatData::PounceLeft)
-      CatSetState(cat, CatData::Left);
-    else
-      CatSetState(cat, CatData::Idle);
-  }
+
+void GroundCat(CatData &cat)
+{
+	cat.isGrounded = true;
+	cat.upFrames = 0;
+	if (cat.state == CatData::PounceRight)
+		CatSetState(cat, CatData::Right);
+	else if (cat.state == CatData::PounceLeft)
+		CatSetState(cat, CatData::Left);
+	else
+		CatSetState(cat, CatData::Idle);
+}
+
+void CatCheckForLanding(const GameStateData& pGameDat, CatData& cat, const Pt& prevPos) {
+	if (cat.pos.y <= FLOOR_HEIGHT) {
+		if (cat.isGrounded)
+			return;
+		cat.pos.y = FLOOR_HEIGHT;
+		GroundCat(cat);
+		return;
+	}
+	else {
+		// Check Bins
+
+		for (size_t i = 0; i < pGameDat.bins.size(); ++i) {
+			Rect binRect = pGameDat.bins.at(i);
+			if (((cat.pos.x + 1) >= binRect.x) &&
+				((cat.pos.x - 1) < (binRect.x + binRect.w)))
+			{
+				int topY = binRect.y + binRect.h + 6;
+
+				if (((cat.isGrounded) || (prevPos.y > topY)) && (cat.pos.y <= topY)) {
+					if (cat.isGrounded)
+						return;
+
+					cat.pos.y = topY;
+					GroundCat(cat);
+					return;
+				}
+			}
+		}
+	}
+
+	if (cat.isGrounded) {
+		cat.isGrounded = false;
+		cat.upFrames = -1;
+		CatSetState(cat, CatData::Down);
+	}
 }
 
 void TickCat(CatData& cat, ButState* buttons) {
@@ -402,24 +455,31 @@ void TickCat(CatData& cat, ButState* buttons) {
         cat.isRunning = true;
       }
       break;
+
     case CatData::Up:
       break;
+	case CatData::PounceLeft:
+		if (cat.isRunning) {
+			cat.pos.x -= 6;
+		}
+		else {
+			cat.pos.x -= 3;
+		}
+		break;
+	case CatData::PounceRight:
+		if (cat.isRunning) {
+			cat.pos.x += 6;
+		}
+		else {
+			cat.pos.x += 3;
+		}
+		break;
+
     case CatData::Down:
+	case CatData::DownLeft:
+	case CatData::DownRight:
       break;
-    case CatData::PounceLeft:
-      if (cat.isRunning) {
-        cat.pos.x -= 6;
-      } else {
-        cat.pos.x -= 3;
-      }
-      break;
-    case CatData::PounceRight:
-      if (cat.isRunning) {
-        cat.pos.x += 6;
-      } else {
-        cat.pos.x += 3;
-      }
-      break;
+    
     case CatData::Hold:
       cat.framesRunning = 0;
       break;
@@ -430,21 +490,22 @@ void TickCat(CatData& cat, ButState* buttons) {
       cat.pos.y += cat.upFrames / 2;
     else
       cat.pos.y += cat.upFrames;
-
-    if (cat.upFrames < 0) {
-      CatCheckForLanding(cat);
-    }
   }
 }
 
 void Tick(GameStateData* pGameData, ButState* buttons) {
+	Pt prevCatPos = pGameData->cat.pos;
   TickCat(pGameData->cat, buttons);
 
   // Force into Game Bounds
-  if (pGameData->cat.pos.x < CAT_HEIGHT / 2)
-    pGameData->cat.pos.x = CAT_HEIGHT / 2;
-  else if (pGameData->cat.pos.x > (pGameData->level_bounds.w - CAT_HEIGHT * 2))
-    pGameData->cat.pos.x = (pGameData->level_bounds.w - CAT_HEIGHT * 2);
+  if (pGameData->cat.pos.x < CAT_HEIGHT)
+	  pGameData->cat.pos.x = CAT_HEIGHT;
+  else if (pGameData->cat.pos.x >(pGameData->level_bounds.w - CAT_HEIGHT))
+	  pGameData->cat.pos.x = (pGameData->level_bounds.w - CAT_HEIGHT);
+
+  if (pGameData->cat.upFrames <= 0) {
+	  CatCheckForLanding(*pGameData, pGameData->cat, prevCatPos);
+  }
 
   // Scroll Screen
   Pt catScreenPt = pGameData->cat.pos - pGameData->scrollPoint;
@@ -809,50 +870,64 @@ void RenderCat(PixData& scrn, Rect* srcRect, CatData& cat,
                SpriteData& sprites) {
   int l = 1;
 
-  Pt topLeft = Pt{cat.pos.x, scrn.size.h - cat.pos.y - CAT_HEIGHT};
+  Pt topLeft = Pt{cat.pos.x, scrn.size.h - cat.pos.y};
 
   switch (cat.state) {
     case CatData::Idle:
       l = sizeof(SPR_CAT_IDLE) / sizeof(int);
-      RenderSprite(scrn, topLeft, sprites, SPR_CAT_IDLE[s_animCount / 10 % l]);
+      RenderSprite(scrn, topLeft, sprites, SPR_CAT_IDLE[s_animCount / 10 % l], SpriteData::BOTTOM);
       break;
 
     case CatData::Left:
       l = sizeof(SPR_CAT_WALK) / sizeof(int);
       RenderSpriteHorFlip(scrn, topLeft, sprites,
-                          SPR_CAT_WALK[s_animCount / 7 % l]);
+		  SPR_CAT_WALK[s_animCount / 7 % l], SpriteData::BOTTOM);
       break;
 
     case CatData::Right:
       l = sizeof(SPR_CAT_WALK) / sizeof(int);
-      RenderSprite(scrn, topLeft, sprites, SPR_CAT_WALK[s_animCount / 7 % l]);
+	  RenderSprite(scrn, topLeft, sprites, SPR_CAT_WALK[s_animCount / 7 % l], SpriteData::BOTTOM);
       break;
 
     case CatData::Up:
       l = sizeof(SPR_CAT_UP) / sizeof(int);
-      RenderSprite(scrn, topLeft, sprites, SPR_CAT_UP[s_animCount / 10 % l]);
+	  RenderSprite(scrn, topLeft, sprites, SPR_CAT_UP[s_animCount / 10 % l], SpriteData::BOTTOM);
       break;
+
+	case CatData::PounceLeft:
+		l = sizeof(SPR_CAT_POUNCE) / sizeof(int);
+		RenderSpriteHorFlip(scrn, topLeft, sprites,
+			SPR_CAT_POUNCE[s_animCount / 10 % l], SpriteData::BOTTOM);
+		break;
+
+	case CatData::PounceRight:
+		l = sizeof(SPR_CAT_POUNCE) / sizeof(int);
+		RenderSprite(scrn, topLeft, sprites,
+			SPR_CAT_POUNCE[s_animCount / 10 % l], SpriteData::BOTTOM);
+		break;
+
 
     case CatData::Down:
       l = sizeof(SPR_CAT_DOWN) / sizeof(int);
-      RenderSprite(scrn, topLeft, sprites, SPR_CAT_DOWN[s_animCount / 10 % l]);
+	  RenderSprite(scrn, topLeft, sprites, SPR_CAT_DOWN[s_animCount / 10 % l], SpriteData::BOTTOM);
       break;
 
-    case CatData::PounceLeft:
-      l = sizeof(SPR_CAT_POUNCE) / sizeof(int);
-      RenderSpriteHorFlip(scrn, topLeft, sprites,
-                          SPR_CAT_POUNCE[s_animCount / 10 % l]);
-      break;
+	case CatData::DownLeft:
+		l = sizeof(SPR_CAT_POUNCE_DOWN) / sizeof(int);
+		RenderSprite(scrn, topLeft, sprites,
+			SPR_CAT_POUNCE_DOWN[s_animCount / 10 % l], SpriteData::BOTTOM);
+		break;
 
-    case CatData::PounceRight:
-      l = sizeof(SPR_CAT_POUNCE) / sizeof(int);
-      RenderSprite(scrn, topLeft, sprites,
-                   SPR_CAT_POUNCE[s_animCount / 10 % l]);
-      break;
+	case CatData::DownRight:
+		l = sizeof(SPR_CAT_POUNCE_DOWN) / sizeof(int);
+		RenderSprite(scrn, topLeft, sprites,
+			SPR_CAT_POUNCE_DOWN[s_animCount / 10 % l], SpriteData::BOTTOM);
+		break;
+		
 
     case CatData::Hold:
       l = sizeof(SPR_CAT_HOLD) / sizeof(int);
-      RenderSprite(scrn, topLeft, sprites, SPR_CAT_HOLD[s_animCount / 10 % l]);
+	  RenderSprite(scrn, topLeft, sprites, SPR_CAT_HOLD[s_animCount / 10 % l], SpriteData::BOTTOM);
       break;
   }
 }
@@ -899,7 +974,7 @@ void Render(GameStateData* pGameData, uint16_t* pixs, Rect* srcRect) {
   for (int y = 0; y < 4; ++y) {
     // Clothes Line
     Pt startPt =
-        Pt{screen.size.x, screen.size.h - (FENCE_HEIGHT + 32 + 32 * y)};
+        Pt{screen.size.x, screen.size.h - (FENCE_HEIGHT + 30 + 32 * y)};
     if (in(screen.size, startPt)) {
       int c = screen.GetI(startPt);
       int tog = startPt.x % 2;
@@ -932,6 +1007,28 @@ void Render(GameStateData* pGameData, uint16_t* pixs, Rect* srcRect) {
     Rect res = RenderSprite(screen, cur, pGameData->sprites, scoreBlank[i]);
     cur.x += 8 - padLeft;  // res.w + 1;
   }
+
+  // Render Bins
+  for (size_t i = 0; i < pGameData->bins.size(); ++i) {
+	  Rect binRect = pGameData->bins.at(i);
+
+	  Pt curr = Pt{ binRect.x, screen.size.h - binRect.y };
+	  int yTop = curr.y - binRect.h + 15;
+	  while (curr.y > yTop) {
+		  RenderSprite(screen, curr, pGameData->sprites, SPR_BIN_MID[0], SpriteData::BOTTOM_LEFT);
+		  curr.y -= 8;
+	  }
+
+	  curr.y -= 10;
+	  RenderSprite(screen, curr, pGameData->sprites, SPR_BIN_TOP[0], SpriteData::BOTTOM_LEFT);
+
+	  // Render Trash Cat
+
+	  // Covering bit
+	  curr.y += 10;
+	  RenderSprite(screen, curr, pGameData->sprites, SPR_BIN_MID[0], SpriteData::BOTTOM_LEFT);
+  }
+  
 
   // Cat
   RenderCat(screen, srcRect, pGameData->cat, pGameData->sprites);
