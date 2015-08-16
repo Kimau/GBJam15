@@ -5,7 +5,7 @@
 
 #define SCREEN_TITLE "GBJam #15 - Kimau"
 
-#if 1  // Big Res
+#if 0  // Big Res
 #define SCREEN_WIDTH 640
 #define SCREEN_HEIGHT 480
 #define GB_WIDTH 320

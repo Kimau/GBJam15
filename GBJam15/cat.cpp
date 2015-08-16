@@ -1,6 +1,7 @@
 #include "cat.h"
 #include <vector>
 #include <algorithm>
+#include <random>
 
 typedef std::vector<Pt> ListOfPt;
 typedef std::vector<Rect> ListOfRect;
@@ -37,6 +38,9 @@ int SPR_CAT_POUNCE[] = {0};
 int SPR_CAT_POUNCE_DOWN[] = {0, 1};
 int SPR_DOG[] = {0, 1};
 int SPR_FIGHT[] = {0, 1, 2};
+int SPR_LAUNDRY[] = { 0, 1, 2, 3 };
+
+int LAUNDRY_WIDTH[] = { 5, 5, 5, 5 };
 
 //// STATE
 
@@ -89,6 +93,18 @@ struct PixData {
   int GetI(const Pt& p) const;
 };
 
+struct LaundryData {
+	int xStep;
+	int laundryType;
+};
+
+struct LaundryLineData
+{
+	int movingDir;
+	int offset;
+	std::vector<LaundryData> laundry;
+};
+
 struct GameStateData {
   int screen_width, screen_height;
   CatData cat;
@@ -96,9 +112,11 @@ struct GameStateData {
   BackgroundData floor;
   Pt scrollPoint;
   Rect level_bounds;  
+  std::mt19937 randGen;
 
   // Alley 
   ListOfRect bins;
+  LaundryLineData* lines;
 };
 
 static int s_animCount = 0;
@@ -303,6 +321,9 @@ void SetupMySheet() {
   SPR_COUNT += SetupSpriteArray(SPR_DOG, sizeof(SPR_DOG) / sizeof(int));
   SPR_COUNT += SetupSpriteArray(SPR_FIGHT, sizeof(SPR_FIGHT) / sizeof(int));
 
+  SPR_COUNT += SetupSpriteArray(SPR_LAUNDRY, sizeof(SPR_LAUNDRY) / sizeof(int));
+
+
   SDL_Log("Setup %d sprites", SPR_COUNT);
 }
 
@@ -319,12 +340,38 @@ GameStateData* GameSetup(uint16_t width, uint16_t height) {
   SetupBackground(pGameState->floor, "floor.bmp");
   SetupMySheet();
 
+  // Setup Random
+  //pGameState->randGen.seed(std::chrono::high_resolution_clock::now());
+
   // Setup Cat
   pGameState->cat.pos = {30, FLOOR_HEIGHT};
   pGameState->cat.state = CatData::Idle;
   pGameState->cat.isGrounded = true;
   pGameState->cat.upFrames = 0;
   pGameState->cat.isRunning = false;
+
+  // Setup Lines
+  pGameState->lines = new LaundryLineData[4];
+
+  for (int c = 0; c < 4; ++c) {
+	  LAUNDRY_WIDTH[c] = pGameState->sprites.sprRect.at(SPR_LAUNDRY[c]).w;
+  }
+
+  for (int i = 0; i < 4; ++i)
+  {
+	  pGameState->lines[i].movingDir = 0;
+
+	  int x = 0;
+	  pGameState->lines[i].offset = x;
+
+	  while (x < pGameState->level_bounds.w) {
+		  int laundryC = pGameState->randGen() % 4;
+		  int step = LAUNDRY_WIDTH[laundryC] + pGameState->randGen() % 40;
+		  x += step;
+		  
+		  pGameState->lines[i].laundry.push_back(LaundryData{ step, laundryC});
+	  }
+  }
 
   // Setup Bins
   int binPos[6] = { 27, 63, 107, 155, 243, 283 };
@@ -1004,12 +1051,34 @@ void Render(GameStateData* pGameData, uint16_t* pixs, Rect* srcRect) {
     }
 
     // Windows
+	int totalanimFrame = 5 * l;
     for (int x = 0; x < 4; ++x) {
-      RenderSprite(screen,
-                   Pt{20 + 80 * x, screen.size.h - (FENCE_HEIGHT+1 + 32 * y)},
-                   pGameData->sprites, SPR_WINDOW_CAT[s_animCount / 5 % l],
-                   SpriteData::BOTTOM_LEFT);
+		int animFrame = 0;
+		if (((s_animCount / totalanimFrame) % 4) == x)
+			animFrame = s_animCount / 5 % l;
+
+		if (((x + y) % 3) == 0) {
+			RenderSprite(screen,
+				Pt{ 20 + 80 * x, screen.size.h - (FENCE_HEIGHT + 1 + 32 * y) },
+				pGameData->sprites, SPR_WINDOW_CAT[animFrame],
+				SpriteData::BOTTOM_LEFT);
+		}
+		else {
+			RenderSprite(screen,
+				Pt{ 20 + 80 * x, screen.size.h - (FENCE_HEIGHT + 1 + 32 * y) },
+				pGameData->sprites, SPR_WINDOW_EMPTY[animFrame],
+				SpriteData::BOTTOM_LEFT);
+		}
     }
+
+	// Clothes
+	int x = pGameData->lines[y].offset;
+	for (int c = pGameData->lines[y].laundry.size()-1; c >= 0; --c)
+	{
+		auto l = pGameData->lines[y].laundry.at(c);
+		RenderSprite(screen, Pt{ x, screen.size.h - (FENCE_HEIGHT + 31 + 32 * y) }, pGameData->sprites, SPR_LAUNDRY[l.laundryType]);
+		x += l.xStep;
+	}
   }
 
   // Fence
