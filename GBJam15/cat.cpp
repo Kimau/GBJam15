@@ -8,7 +8,7 @@ typedef std::vector<Rect> ListOfRect;
 ////// CONSTS
 const uint16_t GBAColours[4] = {0x141, 0x363, 0x9B1, 0xAC1};
 const int FLOOR_HEIGHT = 5;
-const int FENCE_HEIGHT = 90;
+const int FENCE_HEIGHT = 89;
 const int CAT_FRAMES_TO_RUN = 20;
 const int CAT_HEIGHT = 12;
 const int CAT_BIG_JUMP_FRAMES = 16;
@@ -362,41 +362,60 @@ void GroundCat(CatData &cat)
 		CatSetState(cat, CatData::Idle);
 }
 
-void CatCheckForLanding(const GameStateData& pGameDat, CatData& cat, const Pt& prevPos) {
-	if (cat.pos.y <= FLOOR_HEIGHT) {
-		if (cat.isGrounded)
-			return;
-		cat.pos.y = FLOOR_HEIGHT;
-		GroundCat(cat);
-		return;
-	}
-	else {
-		// Check Bins
+void CatCheckForLanding(const GameStateData& pGameDat, CatData& cat,
+                        const Pt& prevPos) {
+  if (cat.isGrounded) {
+    if (cat.pos.y <= FLOOR_HEIGHT) {  // Floor
+      return;
+    } else if (cat.pos.y == FENCE_HEIGHT) {  // Fence
+      return;
+    }
+    // Check Bins
 
-		for (size_t i = 0; i < pGameDat.bins.size(); ++i) {
-			Rect binRect = pGameDat.bins.at(i);
-			if (((cat.pos.x + 1) >= binRect.x) &&
-				((cat.pos.x - 1) < (binRect.x + binRect.w)))
-			{
-				int topY = binRect.y + binRect.h + 6;
+    for (size_t i = 0; i < pGameDat.bins.size(); ++i) {
+      Rect binRect = pGameDat.bins.at(i);
+      if (((cat.pos.x + 1) >= binRect.x) &&
+          ((cat.pos.x - 1) < (binRect.x + binRect.w))) {
+        int topY = binRect.y + binRect.h + 6;
 
-				if (((cat.isGrounded) || (prevPos.y > topY)) && (cat.pos.y <= topY)) {
-					if (cat.isGrounded)
-						return;
+        if (cat.pos.y <= topY) {
+          return;
+        }
+      }
+    }
 
-					cat.pos.y = topY;
-					GroundCat(cat);
-					return;
-				}
-			}
-		}
-	}
+    cat.isGrounded = false;
+    cat.upFrames = -1;
+    CatSetState(cat, CatData::Down);
+  } else  /////////////////////////////////////////////
+  {
+    // Floor
+    if (cat.pos.y <= FLOOR_HEIGHT) {
+      cat.pos.y = FLOOR_HEIGHT;
+      GroundCat(cat);
+      return;
+    }
+    // Fence
+    else if ((prevPos.y >= FENCE_HEIGHT) && (cat.pos.y <= FENCE_HEIGHT)) {
+      GroundCat(cat);
+      return;
+    }
+    // Check Bins
 
-	if (cat.isGrounded) {
-		cat.isGrounded = false;
-		cat.upFrames = -1;
-		CatSetState(cat, CatData::Down);
-	}
+    for (size_t i = 0; i < pGameDat.bins.size(); ++i) {
+      Rect binRect = pGameDat.bins.at(i);
+      if (((cat.pos.x + 1) >= binRect.x) &&
+          ((cat.pos.x - 1) < (binRect.x + binRect.w))) {
+        int topY = binRect.y + binRect.h + 6;
+
+        if ((prevPos.y > topY) && (cat.pos.y <= topY)) {
+          cat.pos.y = topY;
+          GroundCat(cat);
+          return;
+        }
+      }
+    }
+  }
 }
 
 void TickCat(CatData& cat, ButState* buttons) {
@@ -974,7 +993,7 @@ void Render(GameStateData* pGameData, uint16_t* pixs, Rect* srcRect) {
   for (int y = 0; y < 4; ++y) {
     // Clothes Line
     Pt startPt =
-        Pt{screen.size.x, screen.size.h - (FENCE_HEIGHT + 30 + 32 * y)};
+        Pt{screen.size.x, screen.size.h - (FENCE_HEIGHT + 31 + 32 * y)};
     if (in(screen.size, startPt)) {
       int c = screen.GetI(startPt);
       int tog = startPt.x % 2;
@@ -987,7 +1006,7 @@ void Render(GameStateData* pGameData, uint16_t* pixs, Rect* srcRect) {
     // Windows
     for (int x = 0; x < 4; ++x) {
       RenderSprite(screen,
-                   Pt{20 + 80 * x, screen.size.h - (FENCE_HEIGHT + 32 * y)},
+                   Pt{20 + 80 * x, screen.size.h - (FENCE_HEIGHT+1 + 32 * y)},
                    pGameData->sprites, SPR_WINDOW_CAT[s_animCount / 5 % l],
                    SpriteData::BOTTOM_LEFT);
     }
@@ -1032,12 +1051,6 @@ void Render(GameStateData* pGameData, uint16_t* pixs, Rect* srcRect) {
 
   // Cat
   RenderCat(screen, srcRect, pGameData->cat, pGameData->sprites);
-
-  // Flashing Border
-  if ((0) && (((s_animCount / 30) % 2) == 0)) {
-    RenderBorderRect(screen, ShrinkGrow(screen.size, -1), 0xF00, 1, 0);
-    RenderBorderRect(screen, ShrinkGrow(screen.size, -1), 0x00F, 0, 1);
-  }
 }
 
 // DEBUG
