@@ -333,7 +333,7 @@ GameStateData* GameSetup(uint16_t width, uint16_t height) {
   pGameState->screen_width = width;
   pGameState->screen_height = height;
 
-  pGameState->level_bounds = Rect{0, 0, 320, 600};
+  pGameState->level_bounds = Rect{0, 0, 320, 240};
 
   pGameState->scrollPoint = {0, 0};
 
@@ -597,7 +597,7 @@ void Tick(GameStateData* pGameData, ButState* buttons) {
   }
 
   // Scroll Screen
-  Pt catScreenPt = pGameData->cat.pos - pGameData->scrollPoint;
+  Pt catScreenPt = Pt{ pGameData->cat.pos.x - pGameData->scrollPoint.x, pGameData->cat.pos.y + pGameData->scrollPoint.y };
 
   // Core Bounds LEFT / RIGHT
   if ((catScreenPt.x < CAMERA_LEFT_BOUND) ||
@@ -626,16 +626,14 @@ void Tick(GameStateData* pGameData, ButState* buttons) {
   }
 
   // Core Bounds UP / DOWN
-  /*
   int CAMERA_BOTTOM_BOUND = 10;
-  int CAMERA_TOP_BOUND = 10;
+  int CAMERA_TOP_BOUND = 60;
 
   if (catScreenPt.y < CAMERA_BOTTOM_BOUND) {
-          pGameData->scrollPoint.y -= CAMERA_BOTTOM_BOUND - catScreenPt.y;
+          pGameData->scrollPoint.y += CAMERA_BOTTOM_BOUND - catScreenPt.y;
   }
   else if (catScreenPt.y > (pGameData->screen_height - CAMERA_TOP_BOUND)) {
-          pGameData->scrollPoint.y -= (pGameData->screen_height -
-  CAMERA_TOP_BOUND) - catScreenPt.y;
+	  pGameData->scrollPoint.y -= catScreenPt.y - (pGameData->screen_height - CAMERA_TOP_BOUND);
   }
 
   if (pGameData->scrollPoint.y >= 0) {
@@ -646,7 +644,7 @@ void Tick(GameStateData* pGameData, ButState* buttons) {
           pGameData->scrollPoint.y =
                   (pGameData->screen_height - pGameData->level_bounds.h);
   }
-  */
+  /**/
 
   // Clear Press
   buttons->up &= 1;
@@ -905,8 +903,8 @@ void RenderBorderRect(PixData& scrn, const Rect& tarRect, uint16_t col,
                                    outset + inset, outset + inset};
 
   // TOP
-  for (int y = topLeft.y; y < (topLeft.y + topLeft.h); ++y) {
-    c = scrn.GetI(Pt{topLeft.x, y});
+  for (int y = 0; y < topLeft.h; ++y) {
+	  c = scrn.GetI(Pt{ topLeft.x, topLeft.y+y });
     for (int x = topLeft.x; x < (botRight.x + botRight.w); ++x)
       scrn.pixs[c++] = col;
   }
@@ -921,13 +919,15 @@ void RenderBorderRect(PixData& scrn, const Rect& tarRect, uint16_t col,
   for (int y = topLeft.y; y < (botRight.y + botRight.h); ++y) {
     // LEFT
     c = scrn.GetI(Pt{topLeft.x, y});
-    for (int x = topLeft.x; x < (topLeft.x + topLeft.w); ++x)
+    for (int x = 0; x < topLeft.w; ++x)
       scrn.pixs[c++] = col;
 
     // RIGHT
-    c = scrn.GetI(Pt{botRight.x, y});
-    for (int x = botRight.x; x < (botRight.x + botRight.w); ++x)
-      scrn.pixs[c++] = col;
+	if (botRight.w > 0) {
+		c = scrn.GetI(Pt{ botRight.x, y });
+		for (int x = 0; x < botRight.w; ++x)
+			scrn.pixs[c++] = col;
+	}
   }
 }
 
@@ -1080,104 +1080,108 @@ void RenderDEBUGSPRITE(PixData& scrn, SpriteData& sprites) {
 }
 
 void Render(GameStateData* pGameData, uint16_t* pixs, Rect* srcRect) {
-  PixData screen =
-      PixData{pixs, Rect{pGameData->scrollPoint.x, pGameData->scrollPoint.y,
-                         srcRect->w, srcRect->h}};
+	PixData screen =
+		PixData{ pixs, Rect{ pGameData->scrollPoint.x, pGameData->scrollPoint.y,
+		srcRect->w, srcRect->h } };
 
-  // Clear Board
-  RenderFillRect(screen, screen.size,
-                 GBAColours[1]);  //  + ((animCount / 10) % 5)
+	// Clear Board
+	RenderFillRect(screen, screen.size,
+		GBAColours[1]);  //  + ((animCount / 10) % 5)
 
-  // Building
-  int l = sizeof(SPR_WINDOW_CAT) / sizeof(int);
-  for (int y = 0; y < 4; ++y) {
-    // Clothes Line
-    Pt startPt =
-        Pt{screen.size.x, screen.size.h - pGameData->lines[y].lineHeight};
-    if (in(screen.size, startPt)) {
-      int c = screen.GetI(startPt);
-      int tog = startPt.x % 2;
-      for (int x = 0; x < screen.size.w; ++x) {
-        screen.pixs[c++] = GBAColours[tog * 2];
-        tog ^= 1;
-      }
-    }
+	// Building
+	int l = sizeof(SPR_WINDOW_CAT) / sizeof(int);
+	for (int y = 0; y < 4; ++y) {
+		// Clothes Line
+		Pt startPt =
+			Pt{ screen.size.x, screen.size.h - pGameData->lines[y].lineHeight };
+		if (in(screen.size, startPt)) {
+			int c = screen.GetI(startPt);
+			int tog = startPt.x % 2;
+			for (int x = 0; x < screen.size.w; ++x) {
+				screen.pixs[c++] = GBAColours[tog * 2];
+				tog ^= 1;
+			}
+		}
 
-    // Windows
-    int totalanimFrame = 5 * l;
-    for (int x = 0; x < 4; ++x) {
-      int animFrame = 0;
-      if (((s_animCount / totalanimFrame) % 4) == x)
-        animFrame = s_animCount / 5 % l;
+		// Windows
+		int totalanimFrame = 5 * l;
+		for (int x = 0; x < 4; ++x) {
+			int animFrame = 0;
+			if (((s_animCount / totalanimFrame) % 4) == x)
+				animFrame = s_animCount / 5 % l;
 
-      if (((x + y) % 3) == 0) {
-        RenderSprite(screen,
-                     Pt{20 + 80 * x,
-                        screen.size.h - pGameData->lines[y].lineHeight + 26},
-                     pGameData->sprites, SPR_WINDOW_CAT[animFrame],
-                     SpriteData::BOTTOM_LEFT);
-      } else {
-        RenderSprite(screen,
-                     Pt{20 + 80 * x,
-                        screen.size.h - pGameData->lines[y].lineHeight + 26},
-                     pGameData->sprites, SPR_WINDOW_EMPTY[animFrame],
-                     SpriteData::BOTTOM_LEFT);
-      }
-    }
+			if (((x + y) % 3) == 0) {
+				RenderSprite(screen,
+					Pt{ 20 + 80 * x,
+					screen.size.h - pGameData->lines[y].lineHeight + 26 },
+					pGameData->sprites, SPR_WINDOW_CAT[animFrame],
+					SpriteData::BOTTOM_LEFT);
+			}
+			else {
+				RenderSprite(screen,
+					Pt{ 20 + 80 * x,
+					screen.size.h - pGameData->lines[y].lineHeight + 26 },
+					pGameData->sprites, SPR_WINDOW_EMPTY[animFrame],
+					SpriteData::BOTTOM_LEFT);
+			}
+		}
 
-    // Clothes
-    int x = pGameData->lines[y].offset;
-    int maxL = pGameData->lines[y].laundry.size();
-    for (int c = 0; c < maxL; ++c) {
-      auto l = pGameData->lines[y].laundry.at(c);
-      RenderSprite(screen,
-                   Pt{x, screen.size.h - pGameData->lines[y].lineHeight - 1},
-                   pGameData->sprites, SPR_LAUNDRY[l.laundryType]);
-      x += l.xStep;
-    }
-  }
+		// Clothes
+		int x = pGameData->lines[y].offset;
+		int maxL = pGameData->lines[y].laundry.size();
+		for (int c = 0; c < maxL; ++c) {
+			auto l = pGameData->lines[y].laundry.at(c);
+			RenderSprite(screen,
+				Pt{ x, screen.size.h - pGameData->lines[y].lineHeight - 1 },
+				pGameData->sprites, SPR_LAUNDRY[l.laundryType]);
+			x += l.xStep;
+		}
+	}
 
-  // Fence
-  RenderBackground(screen, Pt{0, screen.size.h - pGameData->floor.size.h},
-                   pGameData->floor);
+	// Fence
+	RenderBackground(screen, Pt{ 0, screen.size.h - pGameData->floor.size.h },
+		pGameData->floor);
 
-  // Score
-  Pt cur = Pt{24 + 16, screen.size.h - 79};
-  int scoreBlank[8] = {0, 0, 0, 10, 0, 0, 0, 0};
-  for (int i = 0; i < 8; ++i) {
-    // screen.pixs[screen.GetI(cur)] = 0xF00;
-    int padLeft = (8 - pGameData->sprites.sprRect.at(scoreBlank[i]).w) / 2;
-    cur.x += padLeft;
-    Rect res = RenderSprite(screen, cur, pGameData->sprites, scoreBlank[i]);
-    cur.x += 8 - padLeft;  // res.w + 1;
-  }
+	// Score
+	Pt cur = Pt{ 24 + 16, screen.size.h - 79 };
+	int scoreBlank[8] = { 0, 0, 0, 10, 0, 0, 0, 0 };
+	for (int i = 0; i < 8; ++i) {
+		// screen.pixs[screen.GetI(cur)] = 0xF00;
+		int padLeft = (8 - pGameData->sprites.sprRect.at(scoreBlank[i]).w) / 2;
+		cur.x += padLeft;
+		Rect res = RenderSprite(screen, cur, pGameData->sprites, scoreBlank[i]);
+		cur.x += 8 - padLeft;  // res.w + 1;
+	}
 
-  // Render Bins
-  for (size_t i = 0; i < pGameData->bins.size(); ++i) {
-    Rect binRect = pGameData->bins.at(i);
+	// Render Bins
+	for (size_t i = 0; i < pGameData->bins.size(); ++i) {
+		Rect binRect = pGameData->bins.at(i);
 
-    Pt curr = Pt{binRect.x, screen.size.h - binRect.y};
-    int yTop = curr.y - binRect.h + 15;
-    while (curr.y > yTop) {
-      RenderSprite(screen, curr, pGameData->sprites, SPR_BIN_MID[0],
-                   SpriteData::BOTTOM_LEFT);
-      curr.y -= 8;
-    }
+		Pt curr = Pt{ binRect.x, screen.size.h - binRect.y };
+		int yTop = curr.y - binRect.h + 15;
+		while (curr.y > yTop) {
+			RenderSprite(screen, curr, pGameData->sprites, SPR_BIN_MID[0],
+				SpriteData::BOTTOM_LEFT);
+			curr.y -= 8;
+		}
 
-    curr.y -= 10;
-    RenderSprite(screen, curr, pGameData->sprites, SPR_BIN_TOP[0],
-                 SpriteData::BOTTOM_LEFT);
+		curr.y -= 10;
+		RenderSprite(screen, curr, pGameData->sprites, SPR_BIN_TOP[0],
+			SpriteData::BOTTOM_LEFT);
 
-    // Render Trash Cat
+		// Render Trash Cat
 
-    // Covering bit
-    curr.y += 10;
-    RenderSprite(screen, curr, pGameData->sprites, SPR_BIN_MID[0],
-                 SpriteData::BOTTOM_LEFT);
-  }
+		// Covering bit
+		curr.y += 10;
+		RenderSprite(screen, curr, pGameData->sprites, SPR_BIN_MID[0],
+			SpriteData::BOTTOM_LEFT);
+	}
 
-  // Cat
-  RenderCat(screen, srcRect, pGameData->cat, pGameData->sprites);
+	// Cat
+	RenderCat(screen, srcRect, pGameData->cat, pGameData->sprites);
+
+
+	RenderBorderRect(screen, Rect{ 0, pGameData->screen_height - pGameData->level_bounds.h, pGameData->level_bounds.w, pGameData->level_bounds.h }, GBAColours[0], 1, 0);
 }
 
 // DEBUG
