@@ -17,6 +17,7 @@ const int CAT_CLOTHES_POUNCE_FRAMES = 13;
 const int CAT_SMALL_JUMP_FRAMES = 9;
 const int CAMERA_LEFT_BOUND = 50;
 const int CAMERA_RIGHT_BOUND = 60;
+const int WINDOW_OPEN_TIME = 120;
 
 ///////// SPRITE SHEET DATA
 int SPR_COUNT = 0;
@@ -24,8 +25,8 @@ int SPR_NUM[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
 int SPR_MOUSE_IDLE[] = {0};
 int SPR_MOUSE_RUN[] = {0, 1};
 int SPR_FOOD[] = {0, 1};
-int SPR_WINDOW_CAT[] = {0, 2, 4, 6, 8, 10, 10, 10, 8, 6, 4, 2, 0};
-int SPR_WINDOW_EMPTY[] = {1, 3, 5, 7, 9, 11, 11, 11, 9, 7, 5, 3, 1};
+int SPR_WINDOW_CAT[] = {0, 2, 4, 6, 8, 10};
+int SPR_WINDOW_EMPTY[] = {1, 3, 5, 7, 9, 11};
 int SPR_SQUEEK[] = {0};
 int SPR_BIN_MID[] = {0};
 int SPR_BIN_TOP[] = {0};
@@ -102,8 +103,8 @@ struct LaundryData {
 };
 
 struct LaundryLineData {
-  int movingDir;
   int offset;
+  int scrollDir;
   int lineHeight;
   std::vector<LaundryData> laundry;
 };
@@ -120,6 +121,11 @@ struct GameStateData {
   // Alley
   ListOfRect bins;
   LaundryLineData* lines;
+  int movingLine;
+  int movingLineFrames;
+  bool isMeowUnlocked;
+  int activeWindow;
+  int windowOpenTime;
 };
 
 static int s_animCount = 0;
@@ -209,7 +215,7 @@ void SetupSprites(SpriteData& sprData, const char* filename) {
   }
 
   for (size_t i = 0; i < corners.size(); i++) {
-    const auto& p = corners.at(i);
+    const auto& p = corners[i];
 
     // Build Sheet
     ListOfRect currSpr;
@@ -253,7 +259,7 @@ void SetupSprites(SpriteData& sprData, const char* filename) {
                  (pixs[xoffset + 1 + y * pxSz.w] == 0)) {
         if (currRect.h > 0) {
           for (size_t subI = 0; subI < currSpr.size(); subI++) {
-            auto r = currSpr.at(subI);
+            auto r = currSpr[subI];
             r.y = currRect.y;
             r.h = currRect.h;
             sprData.sprRect.push_back(r);
@@ -330,6 +336,22 @@ void SetupMySheet() {
   SDL_Log("Setup %d sprites", SPR_COUNT);
 }
 
+int GenLaundryFront(LaundryLineData& line, GameStateData& gameState) {
+  int laundryC = gameState.randGen() % 4;
+  int step = LAUNDRY_WIDTH[laundryC] + gameState.randGen() % 20;
+  line.laundry.insert(line.laundry.begin(), LaundryData{step, laundryC});
+
+  return step;
+}
+
+int GenLaundry(LaundryLineData& line, GameStateData& gameState) {
+  int laundryC = gameState.randGen() % 4;
+  int step = LAUNDRY_WIDTH[laundryC] + gameState.randGen() % 20;
+  line.laundry.push_back(LaundryData{step, laundryC});
+
+  return step;
+}
+
 GameStateData* GameSetup(uint16_t width, uint16_t height) {
   GameStateData* pGameState = new GameStateData();
   pGameState->screen_width = width;
@@ -356,26 +378,28 @@ GameStateData* GameSetup(uint16_t width, uint16_t height) {
 
   // Setup Lines
   pGameState->lines = new LaundryLineData[4];
+  pGameState->movingLine = 0;
+  pGameState->movingLineFrames = 0;
 
   for (int c = 0; c < 4; ++c) {
-    LAUNDRY_WIDTH[c] = pGameState->sprites.sprRect.at(SPR_LAUNDRY[c]).w;
+    LAUNDRY_WIDTH[c] = pGameState->sprites.sprRect[SPR_LAUNDRY[c]].w;
   }
 
   for (int i = 0; i < 4; ++i) {
     pGameState->lines[i].lineHeight = (FENCE_HEIGHT + 31 + 32 * i);
-    pGameState->lines[i].movingDir = 0;
 
-    int x = 0;
-    pGameState->lines[i].offset = x;
+    pGameState->lines[i].offset = pGameState->randGen() % 20;
+    int x = pGameState->lines[i].offset;
 
     while (x < pGameState->level_bounds.w) {
-      int laundryC = pGameState->randGen() % 4;
-      int step = LAUNDRY_WIDTH[laundryC] + pGameState->randGen() % 40;
-      x += step;
-
-      pGameState->lines[i].laundry.push_back(LaundryData{step, laundryC});
+      x += GenLaundry(pGameState->lines[i], *pGameState);
     }
   }
+
+  // Setup Windows
+  pGameState->isMeowUnlocked = false;
+  pGameState->activeWindow = pGameState->randGen() % (4 * 4);
+  pGameState->windowOpenTime = 0;
 
   // Setup Bins
   int binPos[6] = {27, 63, 107, 155, 243, 283};
@@ -421,7 +445,7 @@ void CatCheckForLanding(const GameStateData& gameDat, CatData& cat,
 
     // Check Bins
     for (size_t i = 0; i < gameDat.bins.size(); ++i) {
-      Rect binRect = gameDat.bins.at(i);
+      Rect binRect = gameDat.bins[i];
       if (((cat.pos.x + 3) >= binRect.x) &&
           ((cat.pos.x - 3) < (binRect.x + binRect.w))) {
         int topY = binRect.y + binRect.h + 6;
@@ -445,15 +469,15 @@ void CatCheckForLanding(const GameStateData& gameDat, CatData& cat,
     } else if (cat.pos.y > FENCE_HEIGHT) {
       // Clothes
       for (int y = 0; y < 4; ++y) {
-		  if ((cat.pos.y <= (gameDat.lines[y].lineHeight - 12)) &&
+        if ((cat.pos.y <= (gameDat.lines[y].lineHeight - 12)) &&
             (cat.pos.y >= (gameDat.lines[y].lineHeight - 16))) {
           int x = gameDat.lines[y].offset;
 
           int maxL = gameDat.lines[y].laundry.size();
           for (int c = 0; c < maxL; ++c) {
-            auto l = gameDat.lines[y].laundry.at(c);
-            if ((cat.pos.x+2 > x) &&
-                (cat.pos.x-2 < (x + LAUNDRY_WIDTH[l.laundryType]))) {
+            auto l = gameDat.lines[y].laundry[c];
+            if ((cat.pos.x + 2 > x) &&
+                (cat.pos.x - 2 < (x + LAUNDRY_WIDTH[l.laundryType]))) {
               cat.holdPos = Pt{c, y};
               cat.pos.y = gameDat.lines[y].lineHeight - 13;
               cat.state = CatData::Hold;
@@ -476,7 +500,7 @@ void CatCheckForLanding(const GameStateData& gameDat, CatData& cat,
     // Check Bins
 
     for (size_t i = 0; i < gameDat.bins.size(); ++i) {
-      Rect binRect = gameDat.bins.at(i);
+      Rect binRect = gameDat.bins[i];
       if (((cat.pos.x + 3) >= binRect.x) &&
           ((cat.pos.x - 3) < (binRect.x + binRect.w))) {
         int topY = binRect.y + binRect.h + 6;
@@ -496,22 +520,19 @@ void TickCat(CatData& cat, ButState* buttons) {
   if (cat.state == CatData::Hold) {
     //
     if (buttons->up > 0) {
-		
       cat.isGrounded = false;
-	  if (buttons->left > 0) {
-		  cat.upFrames = CAT_CLOTHES_POUNCE_FRAMES;
-		  CatSetState(cat, CatData::PounceLeft);
-		  cat.isRunning = true;
-	  }        
-	  else if (buttons->right > 0) {
-		  cat.upFrames = CAT_CLOTHES_POUNCE_FRAMES;
-		  CatSetState(cat, CatData::PounceRight);
-		  cat.isRunning = true;
-	  }
-	  else {
-		  cat.upFrames = CAT_SMALL_JUMP_FRAMES;
-		  CatSetState(cat, CatData::Up);
-	  }
+      if (buttons->left > 0) {
+        cat.upFrames = CAT_CLOTHES_POUNCE_FRAMES;
+        CatSetState(cat, CatData::PounceLeft);
+        cat.isRunning = true;
+      } else if (buttons->right > 0) {
+        cat.upFrames = CAT_CLOTHES_POUNCE_FRAMES;
+        CatSetState(cat, CatData::PounceRight);
+        cat.isRunning = true;
+      } else {
+        cat.upFrames = CAT_SMALL_JUMP_FRAMES;
+        CatSetState(cat, CatData::Up);
+      }
     } else if (buttons->down > 0) {
       cat.isGrounded = false;
       cat.upFrames = -1;
@@ -612,13 +633,13 @@ void TickCat(CatData& cat, ButState* buttons) {
       break;
 
     case CatData::Down:
-		break;
+      break;
     case CatData::DownLeft:
-		cat.pos.x -= 8;
-		break;
+      cat.pos.x -= 8;
+      break;
     case CatData::DownRight:
-		cat.pos.x += 8;
-		break;
+      cat.pos.x += 8;
+      break;
 
     case CatData::Hold:
       cat.framesRunning = 0;
@@ -637,12 +658,77 @@ void Tick(GameStateData* pGameData, ButState* buttons) {
   Pt prevCatPos = pGameData->cat.pos;
   TickCat(pGameData->cat, buttons);
 
-  // Force into Game Bounds
-  if (pGameData->cat.pos.x < CAT_HEIGHT)
-    pGameData->cat.pos.x = CAT_HEIGHT;
-  else if (pGameData->cat.pos.x > (pGameData->level_bounds.w - CAT_HEIGHT))
-    pGameData->cat.pos.x = (pGameData->level_bounds.w - CAT_HEIGHT);
+  // Animate Windows
+  pGameData->windowOpenTime += 1;
+  if (pGameData->windowOpenTime >= WINDOW_OPEN_TIME) {
+    pGameData->windowOpenTime = 0;
+    pGameData->activeWindow = pGameData->randGen() % (4 * 4);
+  }
 
+  // Move Laundry Line
+  pGameData->movingLineFrames -= 1;
+  if (pGameData->movingLineFrames > 0) {
+    LaundryLineData& l = pGameData->lines[pGameData->movingLine];
+    l.offset += l.scrollDir;
+
+    if ((pGameData->cat.state == CatData::Hold) &&
+        (pGameData->movingLine == pGameData->cat.holdPos.y)) {
+      pGameData->cat.pos.x += l.scrollDir;
+    }
+  } else if (pGameData->movingLineFrames == 0) {
+    // Done Scrolling Clean up Laundry
+    LaundryLineData& l = pGameData->lines[pGameData->movingLine];
+    while (l.offset + l.laundry[0].xStep < 0) {
+      l.offset += l.laundry[0].xStep;
+      l.laundry.erase(l.laundry.begin());
+    }
+
+    int x = l.offset;
+    auto lp = l.laundry.begin();
+    while ((x < pGameData->level_bounds.w) && (lp != l.laundry.end())) {
+      x += lp->xStep;
+      ++lp;
+    }
+
+    l.laundry.erase(lp, l.laundry.end());
+  } else if (pGameData->movingLineFrames < -20) {
+    // Pick Line
+    pGameData->movingLineFrames = 20;
+    pGameData->movingLine = pGameData->randGen() % 4;
+    LaundryLineData& l = pGameData->lines[pGameData->movingLine];
+    l.scrollDir = (pGameData->randGen() & 2) - 1;
+
+    // Generate New Laundry
+    if (l.scrollDir > 0) {
+      int x = 0;
+      while (x < 20) {
+        x += GenLaundryFront(l, *pGameData);
+      }
+      l.offset -= x;
+    } else {
+      int x = 0;
+      while (x < 20) {
+        x += GenLaundry(l, *pGameData);
+      }
+    }
+
+    // Move Cat
+    if ((pGameData->cat.state == CatData::Hold) &&
+        (pGameData->movingLine == pGameData->cat.holdPos.y)) {
+      pGameData->cat.pos.x += l.scrollDir;
+    }
+  }
+
+  // Force into Game Bounds
+  if (pGameData->cat.pos.x < CAT_HEIGHT) {
+    pGameData->cat.pos.x = CAT_HEIGHT;
+    pGameData->cat.state = CatData::Down;
+  } else if (pGameData->cat.pos.x > (pGameData->level_bounds.w - CAT_HEIGHT)) {
+    pGameData->cat.pos.x = (pGameData->level_bounds.w - CAT_HEIGHT);
+    pGameData->cat.state = CatData::Down;
+  }
+
+  // Check Landing
   if ((pGameData->cat.upFrames <= 0) &&
       (pGameData->cat.state != CatData::Hold) &&
       (pGameData->cat.dontLandForFrames <= 0)) {
@@ -727,7 +813,7 @@ void RenderFillRect(PixData& scrn, const Rect& origTarRect, uint16_t col) {
 Rect RenderSpriteHorFlip(PixData& scrn, Pt topLeft, const SpriteData& sheet,
                          size_t sprID,
                          SpriteData::Anchor anchor = SpriteData::TOP_LEFT) {
-  Rect sprRect = sheet.sprRect.at(sprID);
+  Rect sprRect = sheet.sprRect[sprID];
   Rect srcRect = sprRect;
   Rect tarRect = {topLeft.x, topLeft.y, srcRect.w, srcRect.h};
 
@@ -817,7 +903,7 @@ Rect RenderSpriteHorFlip(PixData& scrn, Pt topLeft, const SpriteData& sheet,
 Rect RenderSprite(PixData& scrn, Pt topLeft, const SpriteData& sheet,
                   size_t sprID,
                   SpriteData::Anchor anchor = SpriteData::TOP_LEFT) {
-  Rect sprRect = sheet.sprRect.at(sprID);
+  Rect sprRect = sheet.sprRect[sprID];
   Rect srcRect = sprRect;
   Rect tarRect = {topLeft.x, topLeft.y, srcRect.w, srcRect.h};
 
@@ -1143,7 +1229,7 @@ void Render(GameStateData* pGameData, uint16_t* pixs, Rect* srcRect) {
                  GBAColours[1]);  //  + ((animCount / 10) % 5)
 
   // Building
-  int l = sizeof(SPR_WINDOW_CAT) / sizeof(int);
+  int lengthOfWindowAnim = sizeof(SPR_WINDOW_CAT) / sizeof(int);
   for (int y = 0; y < 4; ++y) {
     // Clothes Line
     Pt startPt =
@@ -1157,14 +1243,33 @@ void Render(GameStateData* pGameData, uint16_t* pixs, Rect* srcRect) {
       }
     }
 
+    // DEBUG SCROLLING
+    // if (pGameData->lines[y].offset < 0) {
+    //	RenderFillRect(screen, Rect{ pGameData->screen_width +
+    // pGameData->lines[y].offset, screen.size.h -
+    // pGameData->lines[y].lineHeight, -pGameData->lines[y].offset, 1 }, 0x00F);
+    //}
+    // else {
+    //	RenderFillRect(screen, Rect{ 0, screen.size.h -
+    // pGameData->lines[y].lineHeight, pGameData->lines[y].offset, 1 }, 0x00F);
+    //}
+
     // Windows
-    int totalanimFrame = 5 * l;
     for (int x = 0; x < 4; ++x) {
       int animFrame = 0;
-      if (((s_animCount / totalanimFrame) % 4) == x)
-        animFrame = s_animCount / 5 % l;
 
-      if (((x + y) % 3) == 0) {
+      if (x + y * 4 == pGameData->activeWindow) {
+        if (pGameData->windowOpenTime < lengthOfWindowAnim)
+          animFrame = pGameData->windowOpenTime;
+        else if (pGameData->windowOpenTime <=
+                 (WINDOW_OPEN_TIME - lengthOfWindowAnim)) {
+          animFrame = lengthOfWindowAnim - 1;
+        } else {
+          animFrame = WINDOW_OPEN_TIME - pGameData->windowOpenTime;
+        }
+      }
+
+      if (pGameData->isMeowUnlocked) {
         RenderSprite(screen,
                      Pt{20 + 80 * x,
                         screen.size.h - pGameData->lines[y].lineHeight + 26},
@@ -1183,7 +1288,7 @@ void Render(GameStateData* pGameData, uint16_t* pixs, Rect* srcRect) {
     int x = pGameData->lines[y].offset;
     int maxL = pGameData->lines[y].laundry.size();
     for (int c = 0; c < maxL; ++c) {
-      auto l = pGameData->lines[y].laundry.at(c);
+      auto l = pGameData->lines[y].laundry[c];
       RenderSprite(screen,
                    Pt{x, screen.size.h - pGameData->lines[y].lineHeight - 1},
                    pGameData->sprites, SPR_LAUNDRY[l.laundryType]);
@@ -1200,7 +1305,7 @@ void Render(GameStateData* pGameData, uint16_t* pixs, Rect* srcRect) {
   int scoreBlank[8] = {0, 0, 0, 10, 0, 0, 0, 0};
   for (int i = 0; i < 8; ++i) {
     // screen.pixs[screen.GetI(cur)] = 0xF00;
-    int padLeft = (8 - pGameData->sprites.sprRect.at(scoreBlank[i]).w) / 2;
+    int padLeft = (8 - pGameData->sprites.sprRect[scoreBlank[i]].w) / 2;
     cur.x += padLeft;
     Rect res = RenderSprite(screen, cur, pGameData->sprites, scoreBlank[i]);
     cur.x += 8 - padLeft;  // res.w + 1;
@@ -1208,7 +1313,7 @@ void Render(GameStateData* pGameData, uint16_t* pixs, Rect* srcRect) {
 
   // Render Bins
   for (size_t i = 0; i < pGameData->bins.size(); ++i) {
-    Rect binRect = pGameData->bins.at(i);
+    Rect binRect = pGameData->bins[i];
 
     Pt curr = Pt{binRect.x, screen.size.h - binRect.y};
     int yTop = curr.y - binRect.h + 15;
@@ -1235,20 +1340,25 @@ void Render(GameStateData* pGameData, uint16_t* pixs, Rect* srcRect) {
 
   /*
   if (pGameData->cat.upFrames > 0) {
-	  RenderFillRect(screen, Rect{ pGameData->cat.pos.x, screen.size.h - pGameData->cat.pos.y - 1 - pGameData->cat.upFrames, 2, pGameData->cat.upFrames }, 0x00F);
+          RenderFillRect(screen, Rect{ pGameData->cat.pos.x, screen.size.h -
+ pGameData->cat.pos.y - 1 - pGameData->cat.upFrames, 2, pGameData->cat.upFrames
+ }, 0x00F);
   }
   else if (pGameData->cat.upFrames < 0) {
-	  RenderFillRect(screen, Rect{ pGameData->cat.pos.x, screen.size.h - pGameData->cat.pos.y - 1, 2, -pGameData->cat.upFrames }, 0xF00);
+          RenderFillRect(screen, Rect{ pGameData->cat.pos.x, screen.size.h -
+ pGameData->cat.pos.y - 1, 2, -pGameData->cat.upFrames }, 0xF00);
   }
  else {
-	 RenderFillRect(screen, Rect{ pGameData->cat.pos.x, screen.size.h - pGameData->cat.pos.y - 1, 2, 1 }, 0x000);
+         RenderFillRect(screen, Rect{ pGameData->cat.pos.x, screen.size.h -
+ pGameData->cat.pos.y - 1, 2, 1 }, 0x000);
  }*/
-
 
   RenderBorderRect(screen,
                    Rect{0, pGameData->screen_height - pGameData->level_bounds.h,
                         pGameData->level_bounds.w, pGameData->level_bounds.h},
                    GBAColours[0], 1, 0);
+
+  /**/
 }
 
 // DEBUG

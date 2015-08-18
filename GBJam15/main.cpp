@@ -2,6 +2,7 @@
 #include <iostream>
 
 #include "cat.h"
+#include "gif.h"
 
 #define SCREEN_TITLE "GBJam #15 - Kimau"
 
@@ -30,6 +31,9 @@ struct SDLAPP {
   SDL_Window *m_window;
   SDL_Renderer *m_renderer;
 };
+
+bool isRecording = false;
+GifWriter writer;
 
 SDLAPP *CreateApp() {
   if (SDL_Init(SDL_INIT_VIDEO) != 0) {
@@ -133,6 +137,17 @@ int GameStep() {
           case SDL_SCANCODE_RIGHT:
             buttons.right = 0;
             break;
+		  case SDL_SCANCODE_G:
+			  if (isRecording) {
+				  isRecording = false;
+				  GifEnd(&writer);
+			  }
+			  else {
+				  isRecording = true;
+				  writer.firstFrame = true;
+				  GifBegin(&writer, "cat.gif", GB_WIDTH, GB_HEIGHT, s_FrameRate);
+				  
+			  }
         }
         break;
 
@@ -152,6 +167,8 @@ int GameStep() {
 
   return 1;
 }
+
+uint8_t* decomGif;
 
 int main(int argc, char *argv[]) {
   SDLAPP *pApp = CreateApp();
@@ -174,10 +191,24 @@ int main(int argc, char *argv[]) {
     return 0;
   }
 
+  uint8_t* decomGif = new uint8_t[GB_HEIGHT*GB_WIDTH * 4];
+
   // RenderTestScene(pixs, srcRect);
 
   do {
     Render(pGameState, pixs, &Rect{srcRect.x, srcRect.y, srcRect.w, srcRect.h});
+
+	if (isRecording){
+		for (int c = 0; c<(GB_WIDTH*GB_HEIGHT); ++c)
+		{
+			decomGif[c*4 + 0] = ((pixs[c] & 0xF00) >> 8) * 17;
+			decomGif[c * 4 + 1] = ((pixs[c] & 0x0F0) >> 4) * 17;
+			decomGif[c * 4 + 2] = (pixs[c] & 0x00F) * 17;
+		}
+		GifWriteFrame(&writer, decomGif, GB_WIDTH, GB_HEIGHT, s_FrameRate/10);
+	}
+	
+
     SDL_UpdateTexture(pBackBuffTex, &srcRect, pixs, GB_WIDTH * 2);
 
     SDL_RenderClear(pApp->m_renderer);
@@ -191,6 +222,8 @@ int main(int argc, char *argv[]) {
     }
 
   } while (GameStep());
+
+  delete[] decomGif;
 
   CleanQuit(pApp);
   return 0;
