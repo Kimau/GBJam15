@@ -735,6 +735,27 @@ void Tick(GameStateData* pGameData, ButState* buttons) {
     CatCheckForLanding(*pGameData, pGameData->cat, prevCatPos);
   }
 
+  // Jump into Window
+  {
+	  const Rect& windowRectSrc = pGameData->sprites.sprRect[SPR_WINDOW_EMPTY[0]];
+	  int x = pGameData->activeWindow % 4;
+	  int y = pGameData->activeWindow / 4;
+
+	  Rect windowRect = Rect{
+		  20 + 80 * x,
+		  pGameData->screen_height - pGameData->lines[y].lineHeight + 26 - windowRectSrc.h,
+		  windowRectSrc.w, windowRectSrc.h };
+	  Rect catRect = Rect{ pGameData->cat.pos.x - CAT_HEIGHT / 2,
+		  pGameData->screen_height - pGameData->cat.pos.y - CAT_HEIGHT,
+		  CAT_HEIGHT, CAT_HEIGHT };
+
+	  Rect hitRect = catRect & windowRect;
+	  if ((hitRect.w > 1) && (hitRect.h > 1)) {
+		  // Jump into Window
+		  pGameData->windowOpenTime = WINDOW_OPEN_TIME;
+	  }
+  }
+
   if (pGameData->cat.dontLandForFrames > 0)
     pGameData->cat.dontLandForFrames -= 1;
 
@@ -1037,6 +1058,8 @@ void RenderBackground(PixData& scrn, Pt topLeft, const BackgroundData& bg) {
 
 void RenderBorderRect(PixData& scrn, const Rect& tarRect, uint16_t col,
                       int inset, int outset) {
+  if ((tarRect.w <= 0) || (tarRect.h <= 0)) return;
+
   int c = 0;
   Rect topLeft = scrn.size & Rect{tarRect.x - outset, tarRect.y - outset,
                                   outset + inset, outset + inset};
@@ -1044,30 +1067,34 @@ void RenderBorderRect(PixData& scrn, const Rect& tarRect, uint16_t col,
                                    tarRect.y + tarRect.h - inset,
                                    outset + inset, outset + inset};
 
-  // TOP
-  for (int y = 0; y < topLeft.h; ++y) {
-    c = scrn.GetI(Pt{topLeft.x, topLeft.y + y});
-    for (int x = topLeft.x; x < (botRight.x + botRight.w); ++x)
-      scrn.pixs[c++] = col;
-  }
+  if (topLeft.x < (botRight.x + botRight.w)) {
+    // TOP
+    for (int y = 0; y < topLeft.h; ++y) {
+      c = scrn.GetI(Pt{topLeft.x, topLeft.y + y});
+      for (int x = topLeft.x; x < (botRight.x + botRight.w); ++x)
+        scrn.pixs[c++] = col;
+    }
 
-  // BOTTOM
-  for (int y = botRight.y; y < (botRight.y + botRight.h); ++y) {
-    c = scrn.GetI(Pt{topLeft.x, y});
-    for (int x = topLeft.x; x < (botRight.x + botRight.w); ++x)
-      scrn.pixs[c++] = col;
+    // BOTTOM
+    for (int y = botRight.y; y < (botRight.y + botRight.h); ++y) {
+      c = scrn.GetI(Pt{topLeft.x, y});
+      for (int x = topLeft.x; x < (botRight.x + botRight.w); ++x)
+        scrn.pixs[c++] = col;
+    }
   }
 
   for (int y = topLeft.y; y < (botRight.y + botRight.h); ++y) {
     // LEFT
-    c = scrn.GetI(Pt{topLeft.x, y});
-    for (int x = 0; x < topLeft.w; ++x) scrn.pixs[c++] = col;
+	  if (topLeft.w > 0) {
+      c = scrn.GetI(Pt{topLeft.x, y});
+      for (int x = 0; x < topLeft.w; ++x) scrn.pixs[c++] = col;
+    }
 
     // RIGHT
     if (botRight.w > 0) {
-      c = scrn.GetI(Pt{botRight.x, y});
-      for (int x = 0; x < botRight.w; ++x) scrn.pixs[c++] = col;
-    }
+        c = scrn.GetI(Pt{botRight.x, y});
+        for (int x = 0; x < botRight.w; ++x) scrn.pixs[c++] = col;
+      }
   }
 }
 

@@ -14,7 +14,7 @@ class Pt {
   int x, y;
 };
 
-class ButState {
+class ButState {	
  public:
   int up, down, left, right;
 };
